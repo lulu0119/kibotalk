@@ -15,6 +15,7 @@ import type { SegmentAggregator } from '@kibotalk/audio/aggregator'
 import { Button, Separator, StickyNoteStack, toast, type CandidateRound } from '@kibotalk/ui'
 import {
   AudioSource,
+  attachAudioIoSpans,
   createSileroInfer,
   SILERO_VARIANTS,
   createWorkerEmbedAudio,
@@ -301,6 +302,7 @@ export default function LiveSession({
           .catch(() => {})
       })
       realtimeAggregatorRef.current = realtimeAggregator
+      attachAudioIoSpans(vad, realtimeAggregator, audio.sampleRate)
 
       pipeline.on((e: PipelineEvent) => {
         switch (e.type) {

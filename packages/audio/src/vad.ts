@@ -1,10 +1,3 @@
-import {
-  IOAttributes,
-  IOSpanNames,
-  IOSubsystems,
-  startSpan,
-} from '@kibotalk/observability'
-
 /**
  * Voice Activity Detection state machine (spec §2.4; config shape follows AIRI's
  * `createVAD`).
@@ -14,13 +7,10 @@ import {
  * loading a model. The playground wires Silero VAD via
  * `@huggingface/transformers` into `infer`.
  *
- * Emits `speech-start`, `speech-end`, and `speech-ready` (with the segmented PCM
- * buffer + duration). Segments shorter than `minSpeechDurationMs` are dropped.
- * Also emits `prob` (the raw speech probability 0–1) after every inference, for
- * live visualization/tuning (mirrors AIRI's `debug` event).
- *
- * When IO tracing is leased, emits one VAD span per speech-ready segment
- * (startTime = speech-start). Short/skipped segments do not emit a span.
+ * Emits `speech-start`, `speech-end`, and `speech-ready` (PCM, duration,
+ * `startedAt`, `speechSamples`). Segments shorter than `minSpeechDurationMs` are
+ * dropped. Also emits `prob` (the raw speech probability 0–1) after every
+ * inference, for live visualization/tuning (mirrors AIRI's `debug` event).
  */
 export type VadConfig = {
   sampleRate: number
@@ -53,7 +43,14 @@ export const defaultVadConfig: VadConfig = {
   newBufferSize: 512,
 }
 
-export type VadSpeechReady = { buffer: Float32Array; duration: number }
+export type VadSpeechReady = {
+  buffer: Float32Array
+  duration: number
+  /** Epoch ms when this segment crossed into speech (excludes left pad). */
+  startedAt: number
+  /** Speech samples only — trailing silence and left pad are not counted. */
+  speechSamples: number
+}
 
 export type VadEvents = {
   'speech-start': void
@@ -103,8 +100,8 @@ export function createVAD(infer: VadInfer, userConfig: Partial<VadConfig> = {}):
   let recording: Float32Array[] = []
   // Serialize inference so out-of-order chunk arrival can't race the state machine.
   let chain: Promise<void> = Promise.resolve()
-  /** Wall-clock start of current speech segment (for IO tracer). */
-  let speechStartPerf: number | null = null
+  /** Epoch ms when the current speech segment crossed the enter threshold. */
+  let speechStartedAt: number | null = null
 
   const maxPrevBuffers = () =>
     Math.ceil((config.speechPadMs * (config.sampleRate / 1000)) / config.newBufferSize)
@@ -124,32 +121,26 @@ export function createVAD(infer: VadInfer, userConfig: Partial<VadConfig> = {}):
     const buffer = concat(recording)
     const completedSpeechSamples = speechSamples
     const speechMs = (completedSpeechSamples / config.sampleRate) * 1000
-    const startPerf = speechStartPerf
+    const startedAt = speechStartedAt!
     recording = []
     silenceSamples = 0
     speechSamples = 0
-    speechStartPerf = null
+    speechStartedAt = null
     inSpeech = continueSpeech
     emit('speech-end', undefined)
     if (speechMs >= config.minSpeechDurationMs) {
       const durationSec = buffer.length / config.sampleRate
-      if (startPerf != null) {
-        const span = startSpan(IOSpanNames.VoiceActivity, {
-          startTime: performance.timeOrigin + startPerf,
-          attrs: {
-            [IOAttributes.Subsystem]: IOSubsystems.VAD,
-            [IOAttributes.VadDuration]: durationSec,
-            [IOAttributes.VadSpeechSamples]: completedSpeechSamples,
-          },
-        })
-        span.end()
-      }
-      emit('speech-ready', { buffer, duration: durationSec })
+      emit('speech-ready', {
+        buffer,
+        duration: durationSec,
+        startedAt,
+        speechSamples: completedSpeechSamples,
+      })
     } else {
       emit('status', { type: 'skip', message: `segment too short (${speechMs.toFixed(0)}ms)` })
     }
     if (continueSpeech) {
-      speechStartPerf = performance.now()
+      speechStartedAt = performance.timeOrigin + performance.now()
       emit('speech-start', undefined)
     }
   }
@@ -167,7 +158,7 @@ export function createVAD(infer: VadInfer, userConfig: Partial<VadConfig> = {}):
         inSpeech = true
         silenceSamples = 0
         speechSamples = chunk.length
-        speechStartPerf = performance.now()
+        speechStartedAt = performance.timeOrigin + performance.now()
         // Left-pad with the audio immediately preceding the detected speech.
         recording = prevBuffers.length > 0 ? [...prevBuffers] : [chunk]
         emit('speech-start', undefined)

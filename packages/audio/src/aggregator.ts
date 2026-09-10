@@ -1,10 +1,3 @@
-import {
-  IOAttributes,
-  IOSpanNames,
-  IOSubsystems,
-  startSpan,
-} from '@kibotalk/observability'
-
 /**
  * Segment aggregator (TurnGate) — sits between VAD (+ speaker verification) and
  * the pipeline / realtime STT. Accumulates same-speaker VAD speech segments and
@@ -15,9 +8,6 @@ import {
  *
  * Constituent PCM is concatenated directly (no silence-gap reconstruction).
  * Spec §2.4 / ADR 0004. Pipeline contract: one flushed segment = one turn.
- *
- * When IO tracing is leased, each flush emits one Aggregator span covering
- * startedAt→endedAt of the merged utterance.
  */
 export type AggregatorConfig = {
   sampleRate: number
@@ -105,18 +95,6 @@ export function createSegmentAggregator<TSegment extends FedSegment = FedSegment
     }
     current = null
     currentSpeaker = null
-
-    const totalMs = (seg.pcm.length / cfg.sampleRate) * 1000
-    const span = startSpan(IOSpanNames.SegmentAggregate, {
-      startTime: seg.startedAt,
-      attrs: {
-        [IOAttributes.Subsystem]: IOSubsystems.Aggregator,
-        [IOAttributes.AggregatorSegments]: parts.length,
-        [IOAttributes.AggregatorTotalMs]: totalMs,
-      },
-    })
-    span.end(seg.endedAt)
-
     emit(seg)
   }
 

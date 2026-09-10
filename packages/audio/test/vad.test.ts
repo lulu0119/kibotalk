@@ -51,6 +51,21 @@ describe('createVAD', () => {
     expect(len).toBeGreaterThan(5120)
   })
 
+  it('speech-ready reports startedAt and speech sample count without pad', async () => {
+    const vad = createVAD(inferFromMarks([
+      ...Array(5).fill(false),
+      ...Array(10).fill(true),
+      ...Array(13).fill(false),
+    ]), CFG)
+    const ready: { startedAt: number; speechSamples: number; duration: number }[] = []
+    vad.on('speech-ready', (event) => ready.push(event))
+    for (let i = 0; i < 28; i++) await vad.processAudio(chunk(CFG.newBufferSize))
+    expect(ready).toHaveLength(1)
+    expect(ready[0].speechSamples).toBe(10 * CFG.newBufferSize)
+    expect(ready[0].startedAt).toBeGreaterThan(0)
+    expect(ready[0].duration).toBeGreaterThan(0)
+  })
+
   it('drops segments shorter than minSpeechDurationMs', async () => {
     // 2 silence, 2 speech (2*512/16 = 64ms < 250ms min), 13 silence
     const marks = [

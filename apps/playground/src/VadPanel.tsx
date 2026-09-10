@@ -19,7 +19,7 @@ import {
   Settings2,
   Square,
 } from 'lucide-react'
-import { AudioSource, createSileroInfer, SILERO_VARIANTS } from '@kibotalk/app-shared'
+import { AudioSource, attachAudioIoSpans, createSileroInfer, SILERO_VARIANTS } from '@kibotalk/app-shared'
 import {
   VadParamsFields,
   MergeParamsFields,
@@ -140,6 +140,7 @@ export default function VadPanel() {
         setMergedSegments((prev) => [...prev, { id, duration, buffer, constituents }].slice(-20))
       })
       aggregatorRef.current = aggregator
+      attachAudioIoSpans(vad, aggregator, audio.sampleRate)
 
       vad.on('prob', (p) => {
         setProb(p)
@@ -153,8 +154,8 @@ export default function VadPanel() {
         aggregator.feed({
           buffer: e.buffer,
           speaker: 'other',
-          startedAt: Date.now() - e.duration * 1000,
-          endedAt: Date.now(),
+          startedAt: e.startedAt,
+          endedAt: e.startedAt + e.duration * 1000,
         })
       })
       await audio.start((chunk) => void vad.processAudio(chunk))

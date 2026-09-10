@@ -23,6 +23,7 @@
     "@huggingface/transformers": "^3.8.1",
     "@kibotalk/audio": "workspace:*",
     "@kibotalk/conversation": "workspace:*",
+    "@kibotalk/observability": "workspace:*",
     "@kibotalk/pipeline": "workspace:*",
     "@kibotalk/shared": "workspace:*",
     "@kibotalk/speaker": "workspace:*",

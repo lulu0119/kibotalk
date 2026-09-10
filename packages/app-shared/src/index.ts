@@ -1,5 +1,6 @@
 export { AudioSource } from './audio/audio-source'
 export type { AudioSourceOptions } from './audio/audio-source'
+export { attachAudioIoSpans } from './audio/io-spans'
 export { createSileroInfer, SILERO_VARIANTS } from './audio/silero-vad'
 export type { SileroVariant } from './audio/silero-vad'
 export { createWorkerEmbedAudio, configureModelSource } from './audio/speaker-embed'

@@ -37,3 +37,8 @@ export {
   type ReadableSpan,
   type Span,
 } from './io-tracer'
+
+export {
+  recordVoiceActivitySpan,
+  recordSegmentAggregateSpan,
+} from './io-audio-spans'

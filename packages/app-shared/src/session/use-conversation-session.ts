@@ -19,6 +19,7 @@ import type { VAD } from '@kibotalk/audio/vad'
 import { createSegmentAggregator } from '@kibotalk/audio/aggregator'
 import type { SegmentAggregator } from '@kibotalk/audio/aggregator'
 import { AudioSource } from '../audio/audio-source'
+import { attachAudioIoSpans } from '../audio/io-spans'
 import { createSileroInfer, SILERO_VARIANTS } from '../audio/silero-vad'
 import { createWorkerEmbedAudio } from '../audio/speaker-embed'
 import { createCurrentSpeakerEmbeddingStorage } from '../speaker-embedding-storage'
@@ -410,6 +411,7 @@ export function useConversationSession(params: ConversationSessionParams) {
           .catch(() => {})
       })
       realtimeAggregatorRef.current = realtimeAggregator
+      attachAudioIoSpans(vad, realtimeAggregator, audio.sampleRate)
 
       if (audioSourceMode === 'both') {
         const systemStream = await p.getSystemAudioStream?.()
@@ -476,6 +478,7 @@ export function useConversationSession(params: ConversationSessionParams) {
             .catch(() => {})
         })
         systemRealtimeAggregatorRef.current = systemRealtimeAggregator
+        attachAudioIoSpans(systemVad, systemRealtimeAggregator, systemAudio.sampleRate)
         systemVad.on('speech-start', () => {
           systemInSpeechRef.current = true
           systemRealtimeAggregatorRef.current?.hold()
