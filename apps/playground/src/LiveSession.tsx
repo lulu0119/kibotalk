@@ -26,10 +26,6 @@ import {
   isTranscriptionFailed,
   type RealtimeSttClient,
   type TranscribedAudioSegment,
-  fetchRelayNodes,
-  openRelaySession,
-  probeRelayNodes,
-  releaseRelaySession,
 } from '@kibotalk/app-shared'
 import { readLanguageSnapshot, useConfig } from './config-store'
 import { SessionToolbar } from './components/SessionToolbar'
@@ -105,7 +101,6 @@ export default function LiveSession({
   const draftMetaRef = useRef<{ speaker: 'user' | 'other'; startedAt: number } | null>(null)
   const inSpeechRef = useRef(false)
   const uncommittedRef = useRef(false)
-  const relaySessionIdRef = useRef<string | null>(null)
 
   useEffect(() => {
     vadRef.current?.updateConfig({
@@ -222,22 +217,9 @@ export default function LiveSession({
       const cfg = useConfig.getState()
       const selectedProvider = cfg.transcribeProvider
       if (!selectedProvider) throw new Error('STT_PROVIDER_REQUIRED')
-      const relaySessionId =
+      const conversationSessionId =
         globalThis.crypto?.randomUUID?.()
         ?? `playground-${Date.now()}-${Math.random().toString(36).slice(2)}`
-      if (!cfg.relayNodeId) throw new Error('请先选择 API 网络节点')
-      setLoading('正在连接所选 API 网络节点…')
-      const relayProbeResults = await probeRelayNodes(await fetchRelayNodes())
-      const relaySelection = await openRelaySession({
-        conversationSessionId: relaySessionId,
-        nodeId: cfg.relayNodeId,
-        probeResults: relayProbeResults,
-      })
-      relaySessionIdRef.current = relaySessionId
-      const relayStatus =
-        relaySelection.latencyMs === null
-          ? relaySelection.node.id
-          : `${relaySelection.node.id} · ${Math.round(relaySelection.latencyMs)} ms`
 
       setLoading('正在启动麦克风与音频处理…')
       const audio = new AudioSource()
@@ -255,7 +237,11 @@ export default function LiveSession({
       })
       vadRef.current = vad
 
-      const llm = new ProxyLlmClient(readLanguageSnapshot(), () => useConfig.getState().islandReplyEnabled)
+      const llm = new ProxyLlmClient(
+        readLanguageSnapshot(),
+        () => useConfig.getState().islandReplyEnabled,
+        conversationSessionId,
+      )
       llmRef.current = llm
       const storage = storageRef.current
       const pipeline = new Pipeline({ llm, conversation: storage })
@@ -266,7 +252,7 @@ export default function LiveSession({
       const rt = await connectRealtimeSttWithRetry({
         provider: selectedProvider,
         language: cfg.conversationLang,
-        sessionId: relaySessionId,
+        sessionId: conversationSessionId,
         handlers: {
           onPartial: (text) => {
             const meta = draftMetaRef.current
@@ -284,7 +270,7 @@ export default function LiveSession({
         },
       })
       realtimeRef.current = rt
-      setStatusNote(`实时转写已连接 · ${relayStatus}`)
+      setStatusNote('实时转写已连接')
 
       const realtimeAggregator = createSegmentAggregator<TranscribedAudioSegment>({
         sampleRate: audio.sampleRate,
@@ -464,8 +450,6 @@ export default function LiveSession({
     setVadStatus('idle')
     setConfidence(null)
     useIoTracerStore.getState().stopRecording()
-    relaySessionIdRef.current = null
-    void releaseRelaySession(true)
   }
 
   async function clearSession() {

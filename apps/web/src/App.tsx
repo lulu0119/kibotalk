@@ -5,7 +5,6 @@ import {
   type ConversationStorage,
 } from '@kibotalk/conversation'
 import {
-  clearSpeakerEmbeddingData,
   createCurrentSpeakerEmbeddingStorage,
   createSessionSnapshot,
   I18nProvider,
@@ -18,6 +17,7 @@ import {
   syncPreferences,
   useAccount,
   useCloudConversationStorage,
+  wipeLocalPersonalData,
   useI18n,
   useModelPreloadStatus,
   useProductSession,
@@ -65,7 +65,6 @@ function WebProductShell({
     sessionTitle: localizedSessionFallbackTitle(Date.now(), snapshot.conversationLang, language),
     storage,
     candidateRoundsMax: 3,
-    preferredRelayNodeId: prefs.relayNodeId,
   })
 
   useEffect(() => {
@@ -105,7 +104,6 @@ function WebProductShell({
         platform="web"
         prefs={prefs}
         sessionActive={controller.session.lifecycle !== 'stopped'}
-        storage={storage}
         onPrefsChange={onPrefsChange}
         onBack={() => setView('session')}
         onManageVoiceprint={() => setView('voiceprint')}
@@ -362,9 +360,7 @@ function AppContent({
         account={accountState.account}
         onAccountChange={accountState.setAccount}
         onDeleteLocalData={async () => {
-          await localStorage.clearHistory()
-          await localStorage.clearActiveSession()
-          await clearSpeakerEmbeddingData()
+          onPrefsChange(await wipeLocalPersonalData(localStorage))
         }}
       />
       <SyncPendingNotice pending={Boolean(cloud.error)} onRetry={cloud.retry} />

@@ -3,10 +3,10 @@ import {
   connectIflytekRealtimeStt,
   parseIflytekServerEvent,
 } from '../src/iflytek-realtime-client'
-import { relayFetch } from '../src/api-runtime'
+import { authorizedFetch } from '../src/api-runtime'
 
 vi.mock('../src/api-runtime', () => ({
-  relayFetch: vi.fn(),
+  authorizedFetch: vi.fn(),
 }))
 
 class MockWebSocket {
@@ -47,7 +47,7 @@ beforeEach(() => {
   MockWebSocket.instances = []
   vi.useFakeTimers()
   vi.stubGlobal('WebSocket', MockWebSocket)
-  vi.mocked(relayFetch).mockReset()
+  vi.mocked(authorizedFetch).mockReset()
 })
 
 afterEach(() => {
@@ -107,7 +107,7 @@ describe('iFlytek realtime browser protocol', () => {
   })
 
   it('streams PCM from the browser directly to the signed provider URL', async () => {
-    vi.mocked(relayFetch).mockImplementation(async (path) => {
+    vi.mocked(authorizedFetch).mockImplementation(async (path) => {
       if (path === '/api/stt/direct/complete') {
         return new Response(JSON.stringify({ ok: true, exhausted: false }), {
           status: 200,
@@ -164,7 +164,7 @@ describe('iFlytek realtime browser protocol', () => {
     await expect(completed).resolves.toBe('直连成功')
     expect(MockWebSocket.instances).toHaveLength(1)
 
-    const completionCall = vi.mocked(relayFetch).mock.calls.find(
+    const completionCall = vi.mocked(authorizedFetch).mock.calls.find(
       ([path]) => path === '/api/stt/direct/complete',
     )
     expect(completionCall).toBeDefined()
@@ -173,7 +173,7 @@ describe('iFlytek realtime browser protocol', () => {
       samples: 512,
     })
     expect(
-      vi.mocked(relayFetch).mock.calls.some(([path]) =>
+      vi.mocked(authorizedFetch).mock.calls.some(([path]) =>
         String(path).includes('/api/stt/direct/session')),
     ).toBe(true)
   })

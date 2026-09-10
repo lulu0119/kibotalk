@@ -78,7 +78,6 @@ export const fakeTurns: ConversationTurn[] = [
 
 export const fakeActiveSession: ConversationSession = {
   id: 'session-demo',
-  relayNodeId: 'jp-primary',
   status: 'running',
   startedAt: now - 10 * minute,
   pausedDurationMs: 0,
@@ -126,8 +125,6 @@ export function createFakeSessionController(options: {
     confidence: null,
     activeSttPath: 'realtime',
     candidateRounds: rounds,
-    relayNodeId: 'jp-primary',
-    relayLatencyMs: 42,
     interrupt: async () => {},
     start: async () => {},
     pause: async () => {},
@@ -140,14 +137,6 @@ export function createFakeSessionController(options: {
     replyEnabled: true,
     setReplyEnabled: () => {},
     providersLoaded: true,
-    preferredRelayNodeId: 'jp-primary',
-    relayProbeResults: [],
-    relayProbeLoading: false,
-    relayProbeError: null,
-    relaySelectionOpen: false,
-    setRelaySelectionOpen: () => {},
-    refreshRelayProbes: async () => {},
     requestSessionStart: () => {},
-    startOnRelayNode: async () => {},
   } as unknown as ProductSessionController
 }

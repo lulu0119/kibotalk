@@ -48,15 +48,4 @@ describe('loadLanguagePrefs', () => {
       languagesConfirmed: true,
     })
   })
-
-  it('keeps a configured generic relay preference', () => {
-    values.set('kibotalk.languagePrefs', JSON.stringify({
-      uiLang: 'zh',
-      conversationLang: 'ja',
-      level: 'beginner',
-      relayNodeId: 'relay-node',
-    }))
-
-    expect(loadLanguagePrefs().relayNodeId).toBe('relay-node')
-  })
 })

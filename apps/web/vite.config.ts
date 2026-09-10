@@ -17,10 +17,6 @@ export default defineConfig({
         target: 'http://localhost:8787',
         ws: true,
       },
-      '/stt': {
-        target: 'http://localhost:8787',
-        ws: true,
-      },
       '/llm': 'http://localhost:8787',
       '/session-review': 'http://localhost:8787',
     },

@@ -39,7 +39,6 @@ import {
   UserRound,
 } from 'lucide-react'
 import { IslandShell } from './IslandShell'
-import { RelayNodeDialog } from './RelayNodeDialog'
 
 export type IslandPageProps = {
   controller: ProductSessionController
@@ -295,7 +294,6 @@ export function IslandPage({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      <RelayNodeDialog controller={controller} />
     </>
   )
 }

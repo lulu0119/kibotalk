@@ -30,7 +30,6 @@ export class InMemoryConversationStorage implements ConversationStorage {
     if (!session) {
       const implicit = await this.startSession({
         id: 'active',
-        relayNodeId: 'jp-primary',
         startedAt: turn.startedAt,
         title: '',
         snapshot: {

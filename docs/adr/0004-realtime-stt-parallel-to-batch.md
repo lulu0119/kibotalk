@@ -7,8 +7,8 @@ STT 仅走 **realtime** 路径。provider 工厂保留两种并行传输：
 
 - `dashscope-realtime`：浏览器连接同源 `WS /stt-realtime`，`apps/api`
   中继并注入 Bearer key；
-- `iflytek-realtime`：浏览器向当前 KiboTalk 节点申请一次性签名 WSS URL，
-  随后直接连接讯飞并上传二进制 PCM；KiboTalk 节点不接收音频字节。
+- `iflytek-realtime`：浏览器向当前 API 申请一次性签名 WSS URL，
+  随后直接连接讯飞并上传二进制 PCM；KiboTalk 服务器不接收音频字节。
 
 生产只启用 `iflytek-realtime`，DashScope adapter 保留但不对生产客户端发布。
 
@@ -33,9 +33,9 @@ diarization。若把 turn 边界交给 provider VAD，会与本地 Silero + WeSp
 ## 鉴权与音频边界
 
 长期签名 Secret 只在服务端。讯飞的 WSS 鉴权位于查询参数，适合原生浏览器
-WebSocket；服务端为已登录且持有当前 relay session grant 的客户端签发带唯一
-UUID 和时间戳的 URL。客户端把讯飞最终结果和本轮样本数回报当前 KiboTalk 节点，
-节点再执行额度扣减。内测期该计费回报信任官方客户端，不作为防破解计费边界。
+WebSocket；服务端为已登录客户端（cookie 或桌面 Bearer）签发带唯一 UUID
+和时间戳的 URL。客户端把讯飞最终结果和本轮样本数回报同一 API origin，
+再执行额度扣减。内测期该计费回报信任官方客户端，不作为防破解计费边界。
 
 ## 文本与教练契约
 

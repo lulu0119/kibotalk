@@ -11,10 +11,8 @@
 > `https://kibotalk.superpowerlulu.win`，账号、强制加密同步、额度和发布要求以 ADR 0005
 > 及本文新增 F12–F15 为准。
 >
-> **双节点生产补充（2026-07-26）**：日本主服务器继续作为唯一控制面，国内
-> `8443` API 中转作为第二数据面节点；会话开始展示用户到两个节点的实测延迟及
-> 国内 HTTP 未加密风险，由用户选择后冻结节点。见
-> [ADR 0006](../adr/0006-session-pinned-api-relay.md)。
+> **单 API origin（2026-09-10）**：客户端只连接当前 API origin（本地
+> `8787` 或生产日本站）。已不存在主从中转、节点选择器或 `relayNodeId`。
 
 ## 摘要
 
@@ -132,7 +130,6 @@ type LanguagePrefs = {
   launchAtLogin: boolean
   audioSource: 'microphone' | 'system' | 'both'
   microphoneDeviceId: string
-  relayNodeId: string // 下次会话节点选择器的默认项
 }
 
 /** Frozen when a session starts; drives UI history, audio, STT + LLM. */
@@ -158,7 +155,6 @@ type ConversationTurn = {
 
 type ConversationSession = {
   id: string
-  relayNodeId: string // start 时确认并冻结
   status: 'running' | 'paused' | 'stopped'
   startedAt: number
   endedAt?: number
@@ -195,7 +191,6 @@ type ReplyCandidate = {
 
 - 一条 `ConversationTurn[]`，不按 speaker 拆两套存储
 - `meaningLang` 不是用户设置项；每次 `startSession` 从当时的 `uiLang` 派生并与其它会话定义一起冻结
-- 设置中的 `relayNodeId` 只决定新会话选择器的默认项；开始前仍展示最新延迟和安全说明。确认后的节点写入 `ConversationSession.relayNodeId`，会话中不切换
 - LLM 上下文 = 全部 turns（含用户 STT 结果）；prompt 须标明触发本轮的 **last speaker**（context 末轮），并注入会话快照的 `conversationLang` / `meaningLang` / `level`
 - 点选候选 ≠ 用户说了什么；**以 STT 为准**
 - LLM JSON：**要么**长度为 3 的候选数组，**要么** `[]`（跳过）。禁止其它包装形状
@@ -225,12 +220,12 @@ type ReplyCandidate = {
 
 ### 1.6 跨端产品壳契约
 
-- **开始即转写**：开始前必须在节点选择器确认节点；产品不提供转写开关。AI 建议可独立关闭；关闭后继续转写并保留旧卡。
+- **开始即转写**：点开始即连当前 API origin；产品不提供转写开关。AI 建议可独立关闭；关闭后继续转写并保留旧卡。
 - **暂停与停止分离**：暂停无需确认并保留上下文；停止需确认，保存后下一次开始创建新会话。停止控制紧邻暂停 / 继续。
 - **Web 会话页**：控制区固定顶部，页面本身不随内容滚动；宽屏 A+B 双栏等高且独立滚动，对话按钮在展开时仍保留并显示激活态；移动端同一按钮打开 / 收起对话层。
 - **桌面 Island**：窗口 always-on-top、可拖移和八向缩放；细边框只在鼠标位于窗口内容或缩放命中区时出现。窗口上半屏时内容在 Island 下方，下半屏时在上方；转写仍是视觉最上方内容。Island 上直接放状态、相邻的暂停 / 继续和停止、AI 开关、四向拖动把手；更多菜单放历史、设置、隐藏、退出。
 - **候选卡**：最多三轮，按容器高度减少；不重叠、不旋转，旧轮逐级透明且不可点击。无候选时不显示空白黄卡；首次请求可显示与最终布局一致的骨架。Web 与桌面均显示日语 ruby 和助词高亮。
-- **设置**：通用、对话、声纹、权限、数据与隐私、关于。对话设置可选择新会话的默认网络节点并显示最近实测延迟；国内 HTTP 节点持续显示未加密风险。普通项立即保存，无保存按钮；活跃会话锁定会话定义类项目。用户看不到模型名称、模型选择或模型删除；清除个人数据也保留模型文件。
+- **设置**：通用、对话、声纹、权限、关于。普通项立即保存，无保存按钮；活跃会话锁定会话定义类项目。用户看不到模型名称、模型选择或模型删除。清历史与重置个人数据在账号页（退出并清除本地数据 / 注销账号）。
 - **音频**：Web 只用系统默认麦克风。桌面可选真实麦克风设备及麦克风 / 系统音频 / 同时采集；同时采集为 mic=user、system=other 两条独立 lane，不混音。
 - **macOS 状态栏**：首次引导后默认不占 Dock；静态品牌图标菜单可显示 / 隐藏、控制会话、切换 AI、进入历史 / 设置及退出。动态状态图标和系统通知延期。所有主动退出路径均需确认；活跃时先停止保存再退出。
 
@@ -699,7 +694,7 @@ LLM_OPENROUTER_MODEL=deepseek/deepseek-chat     # 或 anthropic/claude-...，随
 **与代码的接口（provider 无关，不写死 OpenRouter）**：
 
 - `packages/llm` 暴露 `createLlmClient({ provider, baseUrl, apiKey, model })`，启动时按 `LLM_ACTIVE` 选一组 env 注入
-- STT provider 工厂同时保留 DashScope server-relay 与讯飞 browser-direct；
+- STT provider 工厂同时保留 DashScope 同源 WS 与讯飞 browser-direct；
   `STT_ACTIVE` 决定生产发布的唯一 active provider
 - `apps/api` 的 `/llm` 路由接受可选 `provider` 字段做 per-request 覆盖（默认走 `LLM_ACTIVE`），将来按用户偏好路由就靠这个口子
 - **OpenRouter 只是 LLM `provider` 的一个取值，不是代码里的硬编码假设**。加新 provider = 加一个 adapter + 加一组 env，不动现有代码、不动其他 adapter

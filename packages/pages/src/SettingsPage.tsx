@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import type {
   AppLanguage,
-  ConversationStorage,
   LearnerLevel,
   SessionAudioSource,
   UiLanguage,
@@ -9,16 +8,11 @@ import type {
 import {
   clearSpeakerEmbeddingData,
   createCurrentSpeakerEmbeddingStorage,
-  defaultProductPrefs,
   languageLabel,
   levelLabel,
-  systemUiLanguage,
   useI18n,
-  useRelayNodeProbes,
-  relayNodeLabelKind,
   type LanguagePrefs,
   type ProductTheme,
-  type RelayNodePreference,
 } from '@kibotalk/app-shared'
 import {
   Button,
@@ -39,9 +33,7 @@ import {
 } from '@kibotalk/ui'
 import {
   ArrowLeft,
-  CircleAlert,
   CircleCheck,
-  Database,
   Fingerprint,
   Info,
   Languages,
@@ -50,15 +42,14 @@ import {
   Mic,
   MonitorUp,
   Palette,
-  RefreshCw,
   RotateCcw,
   Settings,
   ShieldCheck,
   Trash2,
 } from 'lucide-react'
 
-type SettingsSection = 'general' | 'conversation' | 'voiceprint' | 'permissions' | 'data' | 'about'
-type ConfirmAction = 'deleteVoiceprint' | 'clearHistory' | 'reset' | null
+type SettingsSection = 'general' | 'conversation' | 'voiceprint' | 'permissions' | 'about'
+type ConfirmAction = 'deleteVoiceprint' | null
 
 export type PermissionState = 'granted' | 'not-determined' | 'denied' | 'restricted' | 'unknown'
 
@@ -67,7 +58,6 @@ export type SettingsPageProps = {
   embedded?: boolean
   prefs: LanguagePrefs
   sessionActive: boolean
-  storage: ConversationStorage
   onPrefsChange: (prefs: LanguagePrefs) => void
   onBack: () => void
   onManageVoiceprint: () => void
@@ -77,7 +67,6 @@ export type SettingsPageProps = {
   screenPermission?: PermissionState
   onRequestMicrophonePermission?: () => Promise<void>
   onRequestScreenPermission?: () => Promise<void>
-  onResetPersonalData?: () => Promise<void>
 }
 
 const LANGUAGES: AppLanguage[] = ['ja', 'en', 'zh']
@@ -124,7 +113,6 @@ export function SettingsPage({
   embedded = false,
   prefs,
   sessionActive,
-  storage,
   onPrefsChange,
   onBack,
   onManageVoiceprint,
@@ -134,14 +122,12 @@ export function SettingsPage({
   screenPermission,
   onRequestMicrophonePermission,
   onRequestScreenPermission,
-  onResetPersonalData,
 }: SettingsPageProps) {
   const { t, language } = useI18n()
   const [section, setSection] = useState<SettingsSection>('general')
   const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null)
   const [voiceprintReady, setVoiceprintReady] = useState(false)
   const [microphones, setMicrophones] = useState<MediaDeviceInfo[]>([])
-  const relayProbes = useRelayNodeProbes()
 
   useEffect(() => {
     void createCurrentSpeakerEmbeddingStorage()
@@ -157,22 +143,6 @@ export function SettingsPage({
       .catch(() => setMicrophones([]))
   }, [microphonePermission, platform])
 
-  useEffect(() => {
-    if (relayProbes.loading || relayProbes.results.length === 0) return
-    if (relayProbes.results.some(({ node }) => node.id === prefs.relayNodeId)) return
-    const primary = relayProbes.results.find(({ node }) => node.role === 'primary')
-    if (!primary) return
-    onPrefsChange({
-      ...prefs,
-      relayNodeId: primary.node.id as RelayNodePreference,
-    })
-  }, [
-    onPrefsChange,
-    prefs,
-    relayProbes.loading,
-    relayProbes.results,
-  ])
-
   const sections = useMemo(
     () =>
       [
@@ -180,7 +150,6 @@ export function SettingsPage({
         { id: 'conversation' as const, label: t('conversationSettings'), icon: Languages },
         { id: 'voiceprint' as const, label: t('voiceprint'), icon: Fingerprint },
         { id: 'permissions' as const, label: t('permissions'), icon: ShieldCheck },
-        { id: 'data' as const, label: t('dataPrivacy'), icon: Database },
         { id: 'about' as const, label: t('about'), icon: Info },
       ],
     [t],
@@ -200,31 +169,9 @@ export function SettingsPage({
   }
 
   async function confirmDestructiveAction() {
-    switch (confirmAction) {
-      case 'deleteVoiceprint':
-        await clearSpeakerEmbeddingData()
-        setVoiceprintReady(false)
-        break
-      case 'clearHistory':
-        await storage.clearHistory()
-        break
-      case 'reset':
-        await storage.clearHistory()
-        await storage.clearActiveSession()
-        await clearSpeakerEmbeddingData()
-        onPrefsChange({
-          ...defaultProductPrefs,
-          uiLang: systemUiLanguage(),
-        })
-        await onResetPersonalData?.()
-        setVoiceprintReady(false)
-        break
-      case null:
-        break
-      default: {
-        const exhaustive: never = confirmAction
-        void exhaustive
-      }
+    if (confirmAction === 'deleteVoiceprint') {
+      await clearSpeakerEmbeddingData()
+      setVoiceprintReady(false)
     }
     setConfirmAction(null)
   }
@@ -377,84 +324,6 @@ export function SettingsPage({
                     </SelectContent>
                   </Select>
                 </SettingRow>
-                <SettingRow
-                  title={t('defaultNetworkNode')}
-                  description={t('defaultNetworkNodeDescription')}
-                >
-                  <div className="flex w-full min-w-0 items-center gap-2">
-                    <Button
-                      type="button"
-                      variant="soft"
-                      size="icon"
-                      className="shrink-0"
-                      disabled={relayProbes.loading}
-                      onClick={() => void relayProbes.refresh()}
-                      aria-label={t('refreshLatency')}
-                    >
-                      <RefreshCw className={`size-4 ${relayProbes.loading ? 'animate-spin' : ''}`} />
-                    </Button>
-                    <div className="min-w-0 flex-1 sm:w-56 sm:flex-none">
-                      <Select
-                        value={prefs.relayNodeId}
-                        disabled={
-                          sessionActive
-                          || relayProbes.loading
-                          || relayProbes.results.length === 0
-                        }
-                        onValueChange={(value) =>
-                          update({ relayNodeId: value as RelayNodePreference })}
-                      >
-                        <SelectTrigger className="w-full">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {relayProbes.results.map((result) => {
-                            const nodeId = result.node.id as RelayNodePreference
-                            let latencyLabel = t('checkingLatency')
-                            if (result.latencyMs === null) {
-                              latencyLabel = t('nodeUnreachable')
-                            } else {
-                              latencyLabel = `${Math.round(result.latencyMs)} ms`
-                            }
-                            const kind = relayNodeLabelKind(result.node)
-                            const title =
-                              kind === 'local'
-                                ? t('localNode')
-                                : kind === 'primary'
-                                  ? t('japanNode')
-                                  : t('relayNode')
-                            return (
-                              <SelectItem
-                                key={nodeId}
-                                value={nodeId}
-                                disabled={result.latencyMs === null}
-                              >
-                                {title}
-                                {' · '}
-                                {latencyLabel}
-                              </SelectItem>
-                            )
-                          })}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                </SettingRow>
-                {relayProbes.results.some(
-                  ({ node }) =>
-                    node.id === prefs.relayNodeId
-                    && node.origin.startsWith('http:'),
-                ) ? (
-                  <div className="flex items-start gap-2 bg-destructive/10 px-4 py-3 text-xs leading-relaxed text-destructive">
-                    <CircleAlert className="mt-0.5 size-4 shrink-0" />
-                    {t('insecureRelayWarning')}
-                  </div>
-                ) : null}
-                {relayProbes.error ? (
-                  <div className="px-4 py-3 text-xs text-destructive">
-                    {t('nodeProbeFailed')}
-                  </div>
-                ) : null}
               </SettingsGroup>
 
               {platform === 'desktop' ? (
@@ -578,31 +447,6 @@ export function SettingsPage({
             </SettingsGroup>
           ) : null}
 
-          {section === 'data' ? (
-            <SettingsGroup>
-              <SettingRow title={t('clearHistory')} danger>
-                <Button
-                  variant="destructive"
-                  disabled={sessionActive}
-                  onClick={() => setConfirmAction('clearHistory')}
-                >
-                  <Trash2 className="size-4" />
-                  {t('clearHistory')}
-                </Button>
-              </SettingRow>
-              <SettingRow title={t('resetPersonalData')} danger>
-                <Button
-                  variant="destructive"
-                  disabled={sessionActive}
-                  onClick={() => setConfirmAction('reset')}
-                >
-                  <RotateCcw className="size-4" />
-                  {t('resetPersonalData')}
-                </Button>
-              </SettingRow>
-            </SettingsGroup>
-          ) : null}
-
           {section === 'about' ? (
             <SettingsGroup>
               <SettingRow title={t('version')}>
@@ -624,20 +468,8 @@ export function SettingsPage({
       <Dialog open={confirmAction !== null} onOpenChange={(open) => !open && setConfirmAction(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>
-              {confirmAction === 'deleteVoiceprint'
-                ? t('deleteVoiceprintTitle')
-                : confirmAction === 'clearHistory'
-                  ? t('clearHistoryTitle')
-                  : t('resetTitle')}
-            </DialogTitle>
-            <DialogDescription>
-              {confirmAction === 'deleteVoiceprint'
-                ? t('deleteVoiceprintDescription')
-                : confirmAction === 'clearHistory'
-                  ? t('clearHistoryDescription')
-                  : t('resetDescription')}
-            </DialogDescription>
+            <DialogTitle>{t('deleteVoiceprintTitle')}</DialogTitle>
+            <DialogDescription>{t('deleteVoiceprintDescription')}</DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <DialogClose asChild>

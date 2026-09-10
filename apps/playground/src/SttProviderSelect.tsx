@@ -8,10 +8,7 @@ import {
 import { useEffect, useState } from 'react'
 import { useConfig } from './config-store'
 import type { SttProvider } from '@kibotalk/app-shared'
-import { defaultRealtimeFirstProvider, fetchSttProviders } from '@kibotalk/app-shared'
-
-export type { SttProvider }
-export { defaultRealtimeFirstProvider as defaultSttProvider }
+import { fetchSttProviders } from '@kibotalk/app-shared'
 
 export function useSttProviders(): SttProvider[] {
   const [providers, setProviders] = useState<SttProvider[]>([])

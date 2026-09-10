@@ -74,9 +74,6 @@ importers:
       '@kibotalk/prompts':
         specifier: workspace:*
         version: link:../../packages/prompts
-      '@kibotalk/shared':
-        specifier: workspace:*
-        version: link:../../packages/shared
       '@kibotalk/stt':
         specifier: workspace:*
         version: link:../../packages/stt
@@ -430,9 +427,6 @@ importers:
       '@kibotalk/pipeline':
         specifier: workspace:*
         version: link:../pipeline
-      '@kibotalk/shared':
-        specifier: workspace:*
-        version: link:../shared
       '@kibotalk/speaker':
         specifier: workspace:*
         version: link:../speaker
@@ -564,8 +558,6 @@ importers:
       vitest:
         specifier: ^2.1.0
         version: 2.1.9(@types/node@22.20.1)(lightningcss@1.33.0)
-
-  packages/shared: {}
 
   packages/speaker:
     dependencies:

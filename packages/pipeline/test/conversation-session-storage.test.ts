@@ -15,7 +15,6 @@ describe('conversation session lifecycle storage', () => {
     const storage = new InMemoryConversationStorage()
     await storage.startSession({
       id: 's1',
-      relayNodeId: 'jp-primary',
       startedAt: 1000,
       snapshot,
       title: 'fallback',
@@ -52,7 +51,6 @@ describe('conversation session lifecycle storage', () => {
     const storage = new InMemoryConversationStorage()
     await storage.startSession({
       id: 'past',
-      relayNodeId: 'jp-primary',
       startedAt: 1000,
       snapshot,
       title: 'past',
@@ -60,7 +58,6 @@ describe('conversation session lifecycle storage', () => {
     await storage.stopActiveSession(2000)
     await storage.startSession({
       id: 'active',
-      relayNodeId: 'sg-relay',
       startedAt: 3000,
       snapshot,
       title: 'active',

@@ -86,13 +86,11 @@ jobs:
                     printf "%s=%s\n" "$name" "$value" >> /opt/kibotalk/.env
                   fi
                 }
-                set_env RELAY_NODES_JSON "[]"
                 set_env STT_ACTIVE "iflytek-realtime"
                 set_env STT_IFLYTEK_APP_ID "$stt_app_id"
                 set_env STT_IFLYTEK_API_KEY "$stt_api_key"
                 set_env STT_IFLYTEK_API_SECRET "$stt_api_secret"
                 set_env STT_IFLYTEK_WS_URL "wss://office-api-ast-dx.iflyaisol.com/ast/communicate/v1"
-                set_env RELAY_PRIMARY_ORIGIN "https://kibotalk.superpowerlulu.win"
                 set_env RESEND_API_KEY "$resend_api_key"
                 set_env RESEND_FROM_EMAIL "noreply@mail.superpowerlulu.win"
                 set_env RESEND_FROM_NAME "Superpower Lulu"
@@ -111,8 +109,6 @@ jobs:
             set -eu
             test -s /opt/kibotalk/.env
             for name in \
-              RELAY_PRIMARY_ORIGIN RELAY_NODES_JSON \
-              RELAY_TOKEN_PRIVATE_KEY RELAY_TOKEN_PUBLIC_KEY RELAY_NODE_SECRET \
               STT_ACTIVE STT_IFLYTEK_APP_ID STT_IFLYTEK_API_KEY \
               STT_IFLYTEK_API_SECRET STT_IFLYTEK_WS_URL \
               LLM_ACTIVE RESEND_API_KEY RESEND_FROM_EMAIL RESEND_FROM_NAME \

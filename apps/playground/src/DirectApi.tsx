@@ -10,7 +10,7 @@ import {
 } from '@kibotalk/ui'
 import { Cable, Loader2, Sparkles, StopCircle } from 'lucide-react'
 import { extractCandidates, parseSseStream } from '@kibotalk/app-shared'
-import { readLanguageSnapshot, useConfig } from './config-store'
+import { readLanguageSnapshot } from './config-store'
 import { StageShell } from './components/StageShell'
 
 type CandidateState = ReplyCandidate[]
@@ -60,8 +60,6 @@ const STATUS_LABEL: Record<LlmRunStatus, string> = {
 }
 
 export default function DirectApi() {
-  const productSurfaceMode = useConfig((s) => s.productSurfaceMode)
-
   const [contextText, setContextText] = useState(
     'other: 本日はお忙しい中お越しいただきありがとうございます。まずは簡単に自己紹介をお願いします。\nuser: 〇〇大学で情報工学を専攻しております、田中と申します。\nother: では、数ある企業の中で、なぜ弊社を志望されたのでしょうか。',
   )

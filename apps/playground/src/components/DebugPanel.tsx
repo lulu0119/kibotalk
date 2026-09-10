@@ -15,7 +15,6 @@ import { useConfig } from '../config-store'
 import {
   VadParamsFields,
   MergeParamsFields,
-  RelayNodeSelect,
   VadModelSelect,
   NumberField,
   ThresholdSlider,
@@ -48,7 +47,6 @@ export function DebugPanel({ running }: DebugPanelProps) {
       <ScrollArea className="min-h-0 flex-1 pr-2">
         <div className="space-y-4 pb-6">
           <div className="space-y-3">
-            <RelayNodeSelect disabled={running} />
             <VadModelSelect disabled={running} />
             <div className="flex flex-col gap-1.5">
               <Label className="text-xs text-muted-foreground">STT</Label>

@@ -57,7 +57,7 @@ export function connectRealtimeStt(opts: {
 }): Promise<RealtimeSttClient> {
   const { provider, language, sessionId, handlers = {} } = opts
   if (provider === 'iflytek-realtime') {
-    return connectIflytekRealtimeStt({ language, handlers })
+    return connectIflytekRealtimeStt({ language, sessionId, handlers })
   }
 
   return sttRealtimeUrl(provider, language, sessionId).then((url) => new Promise((resolve, reject) => {

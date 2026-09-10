@@ -468,23 +468,21 @@ export async function issueWebsocketTicket(context: Context): Promise<Response> 
   return context.json({ ticket: token, expiresInSeconds: 60 })
 }
 
-export async function consumeWebsocketTicket(token: string): Promise<{
-  userId: string
-  deviceSessionId: string
-  platform: 'web' | 'macos'
-  clientVersion: string
-} | null> {
+export async function consumeWebsocketTicket(token: string): Promise<RequestAuth | null> {
   if (isTestAuthBypass() && !databaseConfigured() && token === 'development') {
     return {
       userId: '00000000-0000-0000-0000-000000000001',
+      email: 'test@superpowerlulu.win',
       deviceSessionId: '00000000-0000-0000-0000-000000000002',
       platform: 'web',
       clientVersion: 'development',
+      isAdmin: true,
     }
   }
   const sql = getDatabase()
   const [ticket] = await sql<{
     user_id: string
+    email: string
     device_session_id: string
     platform: 'web' | 'macos'
     client_version: string
@@ -503,6 +501,7 @@ export async function consumeWebsocketTicket(token: string): Promise<{
       AND users.deleted_at IS NULL
     RETURNING
       websocket_tickets.user_id,
+      users.email,
       websocket_tickets.device_session_id,
       device_sessions.platform,
       device_sessions.client_version
@@ -510,9 +509,11 @@ export async function consumeWebsocketTicket(token: string): Promise<{
   return ticket
     ? {
         userId: ticket.user_id,
+        email: ticket.email,
         deviceSessionId: ticket.device_session_id,
         platform: ticket.platform,
         clientVersion: ticket.client_version,
+        isAdmin: isAdminEmail(ticket.email),
       }
     : null
 }

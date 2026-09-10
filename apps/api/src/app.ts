@@ -47,18 +47,17 @@ import {
 } from './sync'
 import { recordTelemetry, recordTelemetryLater } from './telemetry'
 import { redeemVoucher } from './vouchers'
-import { requireRelayRequestAuth } from './relay-request-auth'
-import { registerRelayRoutes } from './relay-routes'
 import {
-  acquireRelayLlmSlot,
-  authorizeRelayLlm,
-  releaseRelayLlm,
-} from './relay-session-state'
-import { providerHealthy } from './provider-health'
-import { relayNodeId, serverRole } from './server-role'
+  acquireLlmSlot,
+  releaseLlmSlot,
+} from './ai-session-state'
+import {
+  cancelIflytekDirectSession,
+  completeIflytekDirectSession,
+  issueIflytekDirectSession,
+} from './iflytek-direct'
 
 export const app = new Hono()
-const role = serverRole()
 
 const APP_LANGUAGES = new Set<AppLanguage>(['ja', 'en', 'zh'])
 const LEARNER_LEVELS = new Set<LearnerLevel>(['beginner', 'intermediate', 'advanced'])
@@ -109,39 +108,7 @@ app.use(
   }),
 )
 
-const RELAY_DATA_PATHS = new Set([
-  '/health',
-  '/api/latency',
-  '/api/relay/handshake',
-  '/api/relay/ws-ticket',
-  '/api/stt/direct/session',
-  '/api/stt/direct/complete',
-  '/api/stt/direct/cancel',
-  '/api/llm',
-  '/llm',
-])
-
-app.use('*', async (context, next) => {
-  if (
-    role === 'relay'
-    && context.req.method !== 'OPTIONS'
-    && !RELAY_DATA_PATHS.has(new URL(context.req.url).pathname)
-  ) return context.json({ error: 'NOT_FOUND' }, 404)
-  await next()
-})
-
-registerRelayRoutes(app, role)
-
 app.get('/health', async (context) => {
-  if (role === 'relay') {
-    return context.json({
-      ok: providerHealthy(),
-      role,
-      nodeId: relayNodeId(),
-      providers: providerHealthy() ? 'ok' : 'error',
-      version: process.env.APP_VERSION ?? 'development',
-    }, providerHealthy() ? 200 : 503)
-  }
   if (!databaseConfigured()) {
     return context.json({
       ok: process.env.APP_ENV !== 'production',
@@ -231,9 +198,13 @@ app.get('/api/stt/providers', async (context) => {
   return context.json({ providers })
 })
 
+app.post('/api/stt/direct/session', (context) => issueIflytekDirectSession(context))
+app.post('/api/stt/direct/complete', (context) => completeIflytekDirectSession(context))
+app.post('/api/stt/direct/cancel', (context) => cancelIflytekDirectSession(context))
+
 app.post('/api/llm', async (context) => {
-  const relayAuth = requireRelayRequestAuth(context, 'llm')
-  if (relayAuth instanceof Response) return relayAuth
+  const auth = await requireRequestAuth(context)
+  if (auth instanceof Response) return auth
   const body = (await context.req.json().catch(() => null)) as {
     context?: ConversationTurn[]
     level?: string
@@ -242,50 +213,36 @@ app.post('/api/llm', async (context) => {
     sessionId?: unknown
   } | null
   const conversationSessionId =
-    typeof body?.sessionId === 'string' && body.sessionId.length <= 200
+    typeof body?.sessionId === 'string' && body.sessionId.length > 0 && body.sessionId.length <= 200
       ? body.sessionId
-      : relayAuth.claims.conversationSessionId
-  if (conversationSessionId !== relayAuth.claims.conversationSessionId) {
-    return context.json({ error: 'RELAY_SESSION_MISMATCH' }, 409)
+      : 'development'
+  const identity = {
+    userId: auth.userId,
+    deviceSessionId: auth.deviceSessionId,
+    conversationSessionId,
+  }
+  if (!acquireLlmSlot(identity)) {
+    return context.json({ error: 'LLM_IN_FLIGHT' }, 409)
   }
   let aiAuthorization: AiUseAuthorization
-  let relayLlmAuthorization:
-    | ReturnType<typeof authorizeRelayLlm>
-    | undefined
-  if (role === 'relay') {
-    relayLlmAuthorization = authorizeRelayLlm(relayAuth.claims)
-    aiAuthorization = {
-      allowed: relayLlmAuthorization.allowed,
-      allowanceConsumed: relayLlmAuthorization.finalAllowanceConsumed,
-    }
-  } else {
-    if (!acquireRelayLlmSlot(relayAuth.claims)) {
-      return context.json({ error: 'LLM_IN_FLIGHT' }, 409)
-    }
-    try {
-      aiAuthorization = await authorizeAiUse({
-        userId: relayAuth.requestAuth.userId,
-        conversationSessionId,
-        kind: 'reply',
-      })
-    } catch {
-      releaseRelayLlm(relayAuth.claims)
-      return context.json({ error: 'QUOTA_UNAVAILABLE' }, 503)
-    }
+  try {
+    aiAuthorization = await authorizeAiUse({
+      userId: auth.userId,
+      conversationSessionId,
+      kind: 'reply',
+    })
+  } catch {
+    releaseLlmSlot(identity)
+    return context.json({ error: 'QUOTA_UNAVAILABLE' }, 503)
   }
   if (!aiAuthorization.allowed) {
-    if (role === 'primary') releaseRelayLlm(relayAuth.claims)
-    const error = relayLlmAuthorization?.error ?? 'QUOTA_EXHAUSTED'
-    return context.json(
-      { error },
-      error === 'LLM_IN_FLIGHT' ? 409 : 402,
-    )
+    releaseLlmSlot(identity)
+    return context.json({ error: 'QUOTA_EXHAUSTED' }, 402)
   }
   const requestId = randomUUID()
   const startedAt = Date.now()
   return streamSSE(context, async (stream) => {
     let usage: LlmUsage | undefined
-    let refundLocalAllowance = false
     try {
       const conversationLang = parseAppLanguage(body?.conversationLang, 'ja')
       const meaningLang = parseAppLanguage(body?.meaningLang, 'zh')
@@ -303,13 +260,6 @@ app.post('/api/llm', async (context) => {
       }
       await stream.writeSSE({ event: 'prompt', data: prompt })
       const config = llmConfigFromEnv(process.env)
-      if (
-        process.env.APP_ENV === 'production'
-        && (
-          config.provider !== relayAuth.claims.llmProvider
-          || config.model !== relayAuth.claims.llmModel
-        )
-      ) throw new Error('RELAY_CAPABILITY_MISMATCH')
       const llmClient = createLlmClient(config)
       const tokenStream = llmClient.streamChat({
         messages,
@@ -321,7 +271,7 @@ app.post('/api/llm', async (context) => {
       for await (const token of tokenStream) {
         await stream.writeSSE({ event: 'token', data: token })
       }
-      await recordTelemetry(relayAuth.requestAuth, {
+      await recordTelemetry(auth, {
         requestId,
         eventType: 'reply_suggestions',
         provider: config.provider,
@@ -332,18 +282,12 @@ app.post('/api/llm', async (context) => {
         outputTokens: usage?.outputTokens,
       })
     } catch (cause) {
-      refundLocalAllowance =
-        role === 'relay'
-        && aiAuthorization.allowanceConsumed
-        && !context.req.raw.signal.aborted
       if (aiAuthorization.allowanceConsumed && !context.req.raw.signal.aborted) {
-        if (role === 'primary') {
-          await refundAiAllowance({
-            userId: relayAuth.requestAuth.userId,
-            conversationSessionId,
-            kind: 'reply',
-          }).catch(() => {})
-        }
+        await refundAiAllowance({
+          userId: auth.userId,
+          conversationSessionId,
+          kind: 'reply',
+        }).catch(() => {})
       }
       if (!context.req.raw.signal.aborted) {
         await stream.writeSSE({
@@ -351,7 +295,7 @@ app.post('/api/llm', async (context) => {
           data: cause instanceof Error ? cause.message : String(cause),
         }).catch(() => {})
       }
-      recordTelemetryLater(relayAuth.requestAuth, {
+      recordTelemetryLater(auth, {
         requestId,
         eventType: 'reply_suggestions',
         status: context.req.raw.signal.aborted ? 'cancelled' : 'error',
@@ -361,10 +305,7 @@ app.post('/api/llm', async (context) => {
         errorCode: cause instanceof Error ? cause.name : 'UPSTREAM_ERROR',
       })
     } finally {
-      releaseRelayLlm(
-        relayAuth.claims,
-        role === 'relay' && refundLocalAllowance,
-      )
+      releaseLlmSlot(identity)
     }
   })
 })
@@ -462,7 +403,5 @@ app.route('/', new Hono()
   .post('/llm', (context) => app.fetch(new Request(new URL('/api/llm', context.req.url), context.req.raw)))
   .post('/session-review', (context) => app.fetch(new Request(new URL('/api/session-review', context.req.url), context.req.raw))))
 
-if (role === 'primary') {
-  app.use('/*', serveStatic({ root: '../web/dist' }))
-  app.get('*', serveStatic({ root: '../web/dist', path: './index.html' }))
-}
+app.use('/*', serveStatic({ root: '../web/dist' }))
+app.get('*', serveStatic({ root: '../web/dist', path: './index.html' }))

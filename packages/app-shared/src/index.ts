@@ -26,12 +26,6 @@ export type { SseMessage } from './sse'
 export {
   apiUrl,
   authorizedFetch,
-  currentRelayNode,
-  fetchRelayNodes,
-  openRelaySession,
-  relayFetch,
-  releaseRelaySession,
-  releaseRelaySessionById,
   clearAccountCache,
   clearAccessToken,
   isDesktopRuntime,
@@ -42,15 +36,7 @@ export {
   saveAccountCache,
   saveAccessToken,
   websocketApiUrl,
-  type RelaySessionSelection,
 } from './api-runtime'
-export {
-  isLocalRelayOrigin,
-  probeRelayNodes,
-  relayNodeLabelKind,
-  type RelayProbeResult,
-} from './relay-routing'
-export { useRelayNodeProbes } from './use-relay-node-probes'
 export {
   deleteCloudAccount,
   fetchAccountDevices,
@@ -72,7 +58,6 @@ export {
 export { extractCandidates, extractCompleteObjects } from './partial-json'
 export {
   defaultSttProvider,
-  defaultRealtimeFirstProvider,
   fetchSttProviders,
 } from './stt-providers'
 export type { SttProvider } from './stt-providers'
@@ -87,7 +72,7 @@ export { finalizedTurnFromRealtimeSegments } from './session/realtime-turn'
 export type { TranscribedAudioSegment } from './session/realtime-turn'
 export { ProxyLlmClient } from './proxy-clients'
 export type { SessionLanguageSnapshot } from './proxy-clients'
-export type { RelayNode } from '@kibotalk/shared'
+export { wipeLocalPersonalData } from './wipe-local-data'
 
 export {
   defaultAppConfig,
@@ -99,7 +84,7 @@ export {
   LEARNER_LEVEL_OPTIONS,
   systemUiLanguage,
 } from './config'
-export type { AppConfig, ProductTheme, RelayNodePreference } from './config'
+export type { AppConfig, ProductTheme } from './config'
 
 export {
   createSessionSnapshot,

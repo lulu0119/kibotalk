@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react'
 import {
   Input,
   Label,
@@ -13,20 +12,12 @@ import {
   TooltipTrigger,
 } from '@kibotalk/ui'
 import type { AppLanguage, LearnerLevel } from '@kibotalk/conversation'
+import { SILERO_VARIANTS } from '@kibotalk/app-shared'
 import {
   APP_LANGUAGE_OPTIONS,
   LEARNER_LEVEL_OPTIONS,
   useConfig,
 } from '../config-store'
-import {
-  fetchRelayNodes,
-  probeRelayNodes,
-  relayNodeLabelKind,
-  SILERO_VARIANTS,
-  type RelayProbeResult,
-} from '@kibotalk/app-shared'
-import { SttProviderSelect } from '../SttProviderSelect'
-import { useTranscribeProvider } from '../SttProviderSelect'
 
 /** Shared numeric field. Reads/writes nothing itself — fully controlled. */
 export function NumberField({
@@ -175,80 +166,6 @@ export function VadModelSelect({ disabled }: { disabled?: boolean }) {
           {SILERO_VARIANTS.map((v) => (
             <SelectItem key={v.id} value={v.id}>{v.label}</SelectItem>
           ))}
-        </SelectContent>
-      </Select>
-    </div>
-  )
-}
-
-/** Realtime STT provider selector wired to the shared store. */
-export function TranscribeProviderSelect({ allowOff = true }: { allowOff?: boolean }) {
-  const { providers, provider } = useTranscribeProvider()
-  const patch = useConfig((s) => s.patch)
-
-  return (
-    <div className="flex flex-col gap-1.5">
-      <Label className="text-xs text-muted-foreground">实时转写</Label>
-      <SttProviderSelect
-        providers={providers}
-        value={provider}
-        onChange={(p) => patch({ transcribeProvider: p })}
-        allowOff={allowOff}
-      />
-    </div>
-  )
-}
-
-/** Manual data-plane node selection with measured user-to-node latency. */
-export function RelayNodeSelect({ disabled }: { disabled?: boolean }) {
-  const relayNodeId = useConfig((state) => state.relayNodeId)
-  const patch = useConfig((state) => state.patch)
-  const [results, setResults] = useState<RelayProbeResult[]>([])
-
-  useEffect(() => {
-    let cancelled = false
-    void fetchRelayNodes()
-      .then(async (nodeList) => {
-        const measured = await probeRelayNodes(nodeList)
-        if (cancelled) return
-        setResults(measured)
-        if (!useConfig.getState().relayNodeId) {
-          patch({ relayNodeId: nodeList.primaryNodeId })
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setResults([])
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  return (
-    <div className="flex flex-col gap-1.5">
-      <Label className="text-xs text-muted-foreground">API 网络节点</Label>
-      <Select
-        value={relayNodeId ?? undefined}
-        onValueChange={(value) => patch({ relayNodeId: value })}
-        disabled={disabled}
-      >
-        <SelectTrigger className="h-9">
-          <SelectValue placeholder="请选择节点" />
-        </SelectTrigger>
-        <SelectContent>
-          {results.map(({ node, latencyMs }) => {
-            const kind = relayNodeLabelKind(node)
-            const title =
-              kind === 'local' ? '本地节点' : kind === 'primary' ? '日本主节点' : '中转节点'
-            return (
-              <SelectItem key={node.id} value={node.id} disabled={latencyMs === null}>
-                {title}
-                {' · '}
-                {latencyMs === null ? '不可达' : `${Math.round(latencyMs)} ms`}
-                {node.origin.startsWith('http:') ? ' · HTTP 未加密' : ''}
-              </SelectItem>
-            )
-          })}
         </SelectContent>
       </Select>
     </div>

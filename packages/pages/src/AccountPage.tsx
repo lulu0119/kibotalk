@@ -183,7 +183,7 @@ function AccountContent({
   const [voucher, setVoucher] = useState('')
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
-  const [deleteOpen, setDeleteOpen] = useState(false)
+  const [dangerAction, setDangerAction] = useState<'logout' | 'delete' | null>(null)
   const [section, setSection] = useState<'quota' | 'devices' | 'account'>('quota')
 
   useEffect(() => {
@@ -211,10 +211,16 @@ function AccountContent({
     }
   }
 
-  async function logout() {
+  async function logoutAndWipe() {
     setBusy(true)
-    await logoutAccount()
-    onAccountChange(null)
+    try {
+      await logoutAccount()
+      await onDeleteLocalData?.()
+      onAccountChange(null)
+    } finally {
+      setBusy(false)
+      setDangerAction(null)
+    }
   }
 
   async function removeAccount() {
@@ -225,7 +231,7 @@ function AccountContent({
       onAccountChange(null)
     } finally {
       setBusy(false)
-      setDeleteOpen(false)
+      setDangerAction(null)
     }
   }
 
@@ -374,21 +380,21 @@ function AccountContent({
                       管理后台
                     </Button>
                   ) : null}
-                  <Button variant="soft" disabled={busy} onClick={() => void logout()}>
+                  <Button variant="soft" disabled={busy} onClick={() => setDangerAction('logout')}>
                     <LogOut className="size-4" />
-                    退出登录
+                    退出并清除本地数据
                   </Button>
                 </CardContent>
               </Card>
               <Card className="border-destructive/30">
                 <CardHeader>
-                  <CardTitle className="text-destructive">删除账户</CardTitle>
-                  <CardDescription>永久删除云端文本历史、额度账本和所有设备会话。</CardDescription>
+                  <CardTitle className="text-destructive">注销账号</CardTitle>
+                  <CardDescription>永久删除云端文本历史、额度账本和所有设备会话，并清除本机数据。</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <Button variant="destructive" onClick={() => setDeleteOpen(true)}>
+                  <Button variant="destructive" onClick={() => setDangerAction('delete')}>
                     <Trash2 className="size-4" />
-                    删除账户
+                    注销账号
                   </Button>
                 </CardContent>
               </Card>
@@ -397,20 +403,28 @@ function AccountContent({
         </main>
       </div>
 
-      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+      <Dialog open={dangerAction !== null} onOpenChange={(open) => !open && setDangerAction(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>确认永久删除账户？</DialogTitle>
+            <DialogTitle>
+              {dangerAction === 'logout' ? '退出并清除本地数据？' : '确认永久注销账号？'}
+            </DialogTitle>
             <DialogDescription>
-              此操作会立即删除云端账户、同步历史和额度，无法恢复；当前设备本地数据也会清除。
+              {dangerAction === 'logout'
+                ? '当前设备会退出登录，本机历史、声纹和偏好会被清除。云端账户仍然保留。'
+                : '此操作会立即删除云端账户、同步历史和额度，无法恢复；当前设备本地数据也会清除。'}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <DialogClose asChild>
               <Button variant="soft">取消</Button>
             </DialogClose>
-            <Button variant="destructive" disabled={busy} onClick={() => void removeAccount()}>
-              确认删除
+            <Button
+              variant="destructive"
+              disabled={busy}
+              onClick={() => void (dangerAction === 'logout' ? logoutAndWipe() : removeAccount())}
+            >
+              {dangerAction === 'logout' ? '退出并清除' : '确认注销'}
             </Button>
           </DialogFooter>
         </DialogContent>

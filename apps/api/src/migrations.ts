@@ -1,6 +1,6 @@
 import { getDatabase } from './db'
 
-const SCHEMA_VERSION = 4
+const SCHEMA_VERSION = 1
 
 export async function migrateDatabase(): Promise<void> {
   const sql = getDatabase()
@@ -122,9 +122,6 @@ export async function migrateDatabase(): Promise<void> {
     CREATE INDEX IF NOT EXISTS voucher_redemptions_lookup_idx
       ON voucher_redemptions (voucher_id, user_id);
 
-    DROP TABLE IF EXISTS invite_code_uses;
-    DROP TABLE IF EXISTS invite_codes;
-
     CREATE SEQUENCE IF NOT EXISTS sync_version_sequence;
 
     CREATE TABLE IF NOT EXISTS synced_sessions (
@@ -194,45 +191,8 @@ export async function migrateDatabase(): Promise<void> {
       PRIMARY KEY (user_id, conversation_session_id)
     );
 
-    CREATE TABLE IF NOT EXISTS relay_sessions (
-      user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      device_session_id uuid NOT NULL REFERENCES device_sessions(id) ON DELETE CASCADE,
-      conversation_session_id text NOT NULL,
-      node_id text NOT NULL,
-      confirmed_at timestamptz,
-      expires_at timestamptz NOT NULL,
-      ended_at timestamptz,
-      created_at timestamptz NOT NULL DEFAULT now(),
-      updated_at timestamptz NOT NULL DEFAULT now(),
-      PRIMARY KEY (user_id, conversation_session_id)
-    );
-    CREATE INDEX IF NOT EXISTS relay_sessions_expiry_idx
-      ON relay_sessions (expires_at)
-      WHERE ended_at IS NULL;
-
-    CREATE TABLE IF NOT EXISTS relay_node_status (
-      node_id text PRIMARY KEY,
-      accepting_new_sessions boolean NOT NULL,
-      provider_healthy boolean NOT NULL,
-      version text,
-      last_seen_at timestamptz NOT NULL,
-      updated_at timestamptz NOT NULL DEFAULT now()
-    );
-
     INSERT INTO schema_migrations (version)
-    VALUES (2)
+    VALUES (${SCHEMA_VERSION})
     ON CONFLICT (version) DO NOTHING;
-
-    DO $migration$
-    BEGIN
-      PERFORM pg_advisory_xact_lock(hashtext('kibotalk-schema-migration'));
-      IF NOT EXISTS (
-        SELECT 1 FROM schema_migrations WHERE version = ${SCHEMA_VERSION}
-      ) THEN
-        DELETE FROM synced_preferences;
-        INSERT INTO schema_migrations (version) VALUES (${SCHEMA_VERSION});
-      END IF;
-    END
-    $migration$;
   `)
 }

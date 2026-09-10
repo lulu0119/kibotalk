@@ -24,7 +24,6 @@ function sessionHistoryStorage(): InMemoryConversationStorage {
   const storage = new InMemoryConversationStorage()
   const base: ConversationSession = {
     id: 'history-1',
-    relayNodeId: 'jp-primary',
     status: 'stopped',
     startedAt: Date.now() - 24 * 60 * 60 * 1000,
     endedAt: Date.now() - 24 * 60 * 60 * 1000 + 7 * 60 * 1000,
@@ -143,7 +142,6 @@ export const SettingsPageDemo: Story = {
       platform="web"
       prefs={{ ...defaultProductPrefs, uiLang: 'zh', theme: 'light' }}
       sessionActive
-      storage={useMemo(() => new InMemoryConversationStorage(), [])}
       onPrefsChange={noop}
       onBack={noop}
       onManageVoiceprint={noop}

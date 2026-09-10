@@ -4,7 +4,7 @@ import { defaultVadConfig } from '@kibotalk/audio/vad'
 import {
   SILERO_VARIANTS,
   defaultAppConfig,
-  defaultRealtimeFirstProvider,
+  defaultSttProvider,
   defaultProductPrefs,
   isLearnerLevel,
   systemUiLanguage,
@@ -83,8 +83,6 @@ type ConfigState = {
   // Selectors
   vadVariantId: string
   transcribeProvider: string | null
-  /** Data-plane node selected before a playground session starts. */
-  relayNodeId: string | null
   // Speaker verification (live session only, but shared for consistency)
   speakerThreshold: number
   /** Max candidate rounds visible in Live sticky stack (playground debug). */
@@ -128,7 +126,6 @@ const audioDefaults = {
   mergeMaxMs: 30000,
   vadVariantId: SILERO_VARIANTS[0].id,
   transcribeProvider: null as string | null,
-  relayNodeId: null as string | null,
   speakerThreshold: defaultAppConfig.speakerThreshold,
   candidateRoundsMax: 2,
   islandSttEnabled: true,
@@ -207,10 +204,10 @@ export const useConfig = create<ConfigState>((set, get) => ({
       if (s.providerBootstrapped) {
         if (!s.transcribeProvider) return s
         if (providers.some((provider) => provider.id === s.transcribeProvider)) return s
-        const next = defaultRealtimeFirstProvider(providers)
+        const next = defaultSttProvider(providers)
         return next ? { transcribeProvider: next } : s
       }
-      const next = defaultRealtimeFirstProvider(providers)
+      const next = defaultSttProvider(providers)
       if (!next) return s
       return { transcribeProvider: next, providerBootstrapped: true }
     }),

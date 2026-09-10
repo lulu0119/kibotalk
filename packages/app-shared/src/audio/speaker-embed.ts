@@ -4,7 +4,7 @@ import type { EmbedAudio } from '@kibotalk/speaker'
  * Create an `embedAudio` function (for `EmbeddingSpeakerVerifier`) backed by a
  * Web Worker running the production speaker model. Each call posts the PCM chunk to the
  * worker and awaits the returned embedding. The chunk is copied (not
- * transferred) so the same PCM can still be sent to /stt by the pipeline.
+ * transferred) so the same PCM can still be sent to realtime STT by the pipeline.
  *
  * The worker is a module-level singleton — enrollment, the live session, and
  * `preloadSpeakerModel` all share the one loaded model instead of each

@@ -34,7 +34,6 @@ import {
   Square,
   UserRound,
 } from 'lucide-react'
-import { RelayNodeDialog } from './RelayNodeDialog'
 
 export type SessionPageProps = {
   controller: ProductSessionController
@@ -336,7 +335,6 @@ export function SessionPage({ controller, onGoSettings, onGoHistory, onGoAccount
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      <RelayNodeDialog controller={controller} />
     </div>
   )
 }

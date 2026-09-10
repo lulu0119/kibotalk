@@ -38,7 +38,6 @@ export type SttProviderInfo = {
   active: boolean;
   configured: boolean;
   mode: SttMode;
-  transport: "relay-websocket" | "direct-websocket";
 };
 
 /** Enumerate realtime providers configured in `env`. Keys are never included. */
@@ -55,7 +54,6 @@ export function listSttProviders(
       active: env.STT_ACTIVE === "dashscope-realtime",
       configured: realtimeConfigured,
       mode: "realtime",
-      transport: "relay-websocket",
     },
     {
       id: "iflytek-realtime",
@@ -68,7 +66,6 @@ export function listSttProviders(
         && env.STT_IFLYTEK_API_SECRET
       ),
       mode: "realtime",
-      transport: "direct-websocket",
     },
   ];
 }

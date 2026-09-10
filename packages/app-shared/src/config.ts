@@ -49,7 +49,6 @@ export const defaultLanguagePrefs: {
 }
 
 export type ProductTheme = 'system' | 'light' | 'dark'
-export type RelayNodePreference = string
 
 export const defaultProductPrefs: {
   conversationLang: AppLanguage
@@ -59,7 +58,6 @@ export const defaultProductPrefs: {
   launchAtLogin: boolean
   audioSource: SessionAudioSource
   microphoneDeviceId: string
-  relayNodeId: RelayNodePreference
 } = {
   conversationLang: 'ja',
   level: 'beginner',
@@ -68,7 +66,6 @@ export const defaultProductPrefs: {
   launchAtLogin: false,
   audioSource: 'microphone',
   microphoneDeviceId: 'default',
-  relayNodeId: 'jp-primary',
 }
 
 export function systemUiLanguage(language = globalThis.navigator?.language ?? 'en'): UiLanguage {

@@ -1,10 +1,8 @@
 import { createHmac, randomUUID } from 'node:crypto'
 import type { Context } from 'hono'
+import { requireRequestAuth } from './auth'
 import { MAX_TURN_OVERDRAW_SECONDS } from './quota'
-import { billCompletedRelayTurn } from './relay-billing'
-import { requireRelayRequestAuth } from './relay-request-auth'
-import { relayRemainingSeconds, touchRelaySession } from './relay-session-state'
-import { serverRole } from './server-role'
+import { billCompletedSttTurn, remainingQuotaSeconds } from './stt-billing'
 import { recordTelemetryLater } from './telemetry'
 
 const DEFAULT_WS_URL =
@@ -93,20 +91,25 @@ export function createIflytekSignedUrl(args: {
   return url.toString()
 }
 
+function conversationSessionId(value: unknown): string {
+  return typeof value === 'string' && value.length > 0 && value.length <= 200
+    ? value
+    : 'development'
+}
+
 function pruneIssuedSessions(now = Date.now()): void {
   for (const [requestId, session] of issuedSessions) {
     if (now - session.issuedAt > DIRECT_SESSION_TTL_MS) issuedSessions.delete(requestId)
   }
 }
 
-export function issueIflytekDirectSession(context: Context): Response {
-  const auth = requireRelayRequestAuth(context, 'stt-realtime')
+export async function issueIflytekDirectSession(context: Context): Promise<Response> {
+  const auth = await requireRequestAuth(context)
   if (auth instanceof Response) return auth
-  if (
-    process.env.STT_ACTIVE !== 'iflytek-realtime'
-    || auth.claims.sttProvider !== 'iflytek-realtime'
-  ) return context.json({ error: 'STT_PROVIDER_NOT_ACTIVE' }, 409)
-  if (relayRemainingSeconds(auth.claims) <= 0) {
+  if (process.env.STT_ACTIVE !== 'iflytek-realtime') {
+    return context.json({ error: 'STT_PROVIDER_NOT_ACTIVE' }, 409)
+  }
+  if ((await remainingQuotaSeconds(auth.userId)) <= 0) {
     return context.json({ error: 'QUOTA_EXHAUSTED' }, 402)
   }
   const languageQuery = context.req.query('language')
@@ -114,6 +117,7 @@ export function issueIflytekDirectSession(context: Context): Response {
     languageQuery === 'ja' || languageQuery === 'en' || languageQuery === 'zh'
       ? languageQuery
       : undefined
+  const conversationSessionIdValue = conversationSessionId(context.req.query('sessionId'))
   let config: IflytekConfig
   try {
     config = configFromEnv()
@@ -126,19 +130,18 @@ export function issueIflytekDirectSession(context: Context): Response {
   pruneIssuedSessions()
   const outstanding = [...issuedSessions.values()].filter(
     (session) =>
-      session.userId === auth.claims.userId
-      && session.conversationSessionId === auth.claims.conversationSessionId,
+      session.userId === auth.userId
+      && session.conversationSessionId === conversationSessionIdValue,
   )
   if (outstanding.length >= MAX_OUTSTANDING_SESSIONS) {
     return context.json({ error: 'DIRECT_STT_SESSION_LIMIT' }, 429)
   }
   const requestId = randomUUID()
   issuedSessions.set(requestId, {
-    userId: auth.claims.userId,
-    conversationSessionId: auth.claims.conversationSessionId,
+    userId: auth.userId,
+    conversationSessionId: conversationSessionIdValue,
     issuedAt: Date.now(),
   })
-  touchRelaySession(auth.claims)
   return context.json({
     requestId,
     url: createIflytekSignedUrl({ config, language }),
@@ -151,7 +154,7 @@ export function issueIflytekDirectSession(context: Context): Response {
 }
 
 export async function completeIflytekDirectSession(context: Context): Promise<Response> {
-  const auth = requireRelayRequestAuth(context, 'stt-realtime')
+  const auth = await requireRequestAuth(context)
   if (auth instanceof Response) return auth
   const body = (await context.req.json().catch(() => null)) as {
     requestId?: unknown
@@ -162,11 +165,9 @@ export async function completeIflytekDirectSession(context: Context): Promise<Re
   const samples = Number(body?.samples)
   const durationMs = Number(body?.durationMs)
   const issued = issuedSessions.get(requestId)
-  if (
-    !issued
-    || issued.userId !== auth.claims.userId
-    || issued.conversationSessionId !== auth.claims.conversationSessionId
-  ) return context.json({ error: 'DIRECT_STT_SESSION_NOT_FOUND' }, 404)
+  if (!issued || issued.userId !== auth.userId) {
+    return context.json({ error: 'DIRECT_STT_SESSION_NOT_FOUND' }, 404)
+  }
   if (
     !Number.isInteger(samples)
     || samples <= 0
@@ -176,16 +177,13 @@ export async function completeIflytekDirectSession(context: Context): Promise<Re
   ) return context.json({ error: 'INVALID_DIRECT_STT_USAGE' }, 400)
   issuedSessions.delete(requestId)
   try {
-    const deduction = await billCompletedRelayTurn({
-      role: serverRole(),
+    const deduction = await billCompletedSttTurn({
       auth,
+      conversationSessionId: issued.conversationSessionId,
       requestId,
       audioSeconds: samples / SAMPLE_RATE,
-      provider: 'iflytek',
-      model: MODEL,
-      durationMs,
     })
-    recordTelemetryLater(auth.requestAuth, {
+    recordTelemetryLater(auth, {
       requestId,
       eventType: 'stt_realtime_turn',
       provider: 'iflytek',
@@ -194,7 +192,6 @@ export async function completeIflytekDirectSession(context: Context): Promise<Re
       durationMs,
       billedAudioSeconds: deduction.billedSeconds,
       metadata: {
-        transport: 'direct-websocket',
         deductedSeconds: deduction.deductedSeconds,
         overdrawSeconds: deduction.overdrawSeconds,
       },
@@ -205,7 +202,7 @@ export async function completeIflytekDirectSession(context: Context): Promise<Re
       remainingSeconds: deduction.remainingSeconds,
     })
   } catch (cause) {
-    recordTelemetryLater(auth.requestAuth, {
+    recordTelemetryLater(auth, {
       requestId,
       eventType: 'stt_realtime_turn',
       provider: 'iflytek',
@@ -213,24 +210,19 @@ export async function completeIflytekDirectSession(context: Context): Promise<Re
       status: 'error',
       durationMs,
       errorCode: cause instanceof Error ? cause.name : 'BILLING_ERROR',
-      metadata: { transport: 'direct-websocket' },
     })
     return context.json({ error: 'BILLING_UNAVAILABLE' }, 503)
   }
 }
 
 export async function cancelIflytekDirectSession(context: Context): Promise<Response> {
-  const auth = requireRelayRequestAuth(context, 'stt-realtime')
+  const auth = await requireRequestAuth(context)
   if (auth instanceof Response) return auth
   const body = (await context.req.json().catch(() => null)) as {
     requestId?: unknown
   } | null
   const requestId = typeof body?.requestId === 'string' ? body.requestId : ''
   const issued = issuedSessions.get(requestId)
-  if (
-    issued
-    && issued.userId === auth.claims.userId
-    && issued.conversationSessionId === auth.claims.conversationSessionId
-  ) issuedSessions.delete(requestId)
+  if (issued && issued.userId === auth.userId) issuedSessions.delete(requestId)
   return context.json({ ok: true })
 }

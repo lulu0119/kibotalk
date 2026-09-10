@@ -5,7 +5,6 @@ import {
   type ConversationStorage,
 } from '@kibotalk/conversation'
 import {
-  clearSpeakerEmbeddingData,
   createCurrentSpeakerEmbeddingStorage,
   I18nProvider,
   loadLanguagePrefs,
@@ -15,6 +14,7 @@ import {
   useAccount,
   useCloudConversationStorage,
   useI18n,
+  wipeLocalPersonalData,
   type LanguagePrefs,
   type AccountSession,
 } from '@kibotalk/app-shared'
@@ -230,9 +230,7 @@ function DesktopWindowContent({
               : undefined
           }
           onDeleteLocalData={async () => {
-            await localStorage.clearHistory()
-            await localStorage.clearActiveSession()
-            await clearSpeakerEmbeddingData()
+            onPrefsChange(await wipeLocalPersonalData(localStorage))
             await window.kibotalk.onboarding.reset()
           }}
         />,
@@ -270,7 +268,6 @@ function DesktopWindowContent({
         embedded
         prefs={prefs}
         sessionActive={sessionActive}
-        storage={storage}
         onPrefsChange={onPrefsChange}
         onBack={() => void window.kibotalk.onboarding.close()}
         onManageVoiceprint={() => setView('voiceprint')}
@@ -286,7 +283,6 @@ function DesktopWindowContent({
           await window.kibotalk.permissions.requestScreenRecording()
           await refreshPermissions()
         }}
-        onResetPersonalData={() => window.kibotalk.onboarding.reset()}
       />,
     )
   }

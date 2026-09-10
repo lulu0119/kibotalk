@@ -1,4 +1,4 @@
-import { relayFetch } from './api-runtime'
+import { authorizedFetch } from './api-runtime'
 import {
   RealtimeSttError,
   type RealtimeSttClient,
@@ -122,11 +122,16 @@ function floatToPcm16Bytes(pcm: Float32Array): Uint8Array {
   return bytes
 }
 
-async function requestDirectSession(language?: string): Promise<DirectSession> {
-  const path = language
-    ? `/api/stt/direct/session?language=${encodeURIComponent(language)}`
-    : '/api/stt/direct/session'
-  const response = await relayFetch(path, { method: 'POST' })
+async function requestDirectSession(
+  language?: string,
+  conversationSessionId?: string,
+): Promise<DirectSession> {
+  const params = new URLSearchParams()
+  if (language) params.set('language', language)
+  if (conversationSessionId) params.set('sessionId', conversationSessionId)
+  const query = params.toString()
+  const path = query ? `/api/stt/direct/session?${query}` : '/api/stt/direct/session'
+  const response = await authorizedFetch(path, { method: 'POST' })
   const body = (await response.json().catch(() => ({}))) as Partial<DirectSession> & {
     error?: string
     message?: string
@@ -154,7 +159,7 @@ async function reportDirectCompletion(
   samples: number,
   durationMs: number,
 ): Promise<{ exhausted: boolean }> {
-  const response = await relayFetch('/api/stt/direct/complete', {
+  const response = await authorizedFetch('/api/stt/direct/complete', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ requestId, samples, durationMs }),
@@ -173,7 +178,7 @@ async function reportDirectCompletion(
 }
 
 async function cancelDirectSession(requestId: string): Promise<void> {
-  await relayFetch('/api/stt/direct/cancel', {
+  await authorizedFetch('/api/stt/direct/cancel', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ requestId }),
@@ -207,6 +212,7 @@ type IflytekTurn = {
 function createIflytekTurn(options: {
   previous: Promise<unknown>
   language?: string
+  conversationSessionId?: string
   handlers: RealtimeSttHandlers
   eager: boolean
 }): IflytekTurn {
@@ -353,7 +359,10 @@ function createIflytekTurn(options: {
     if (settled) return
     let directSession: DirectSession
     try {
-      directSession = await requestDirectSession(options.language)
+      directSession = await requestDirectSession(
+        options.language,
+        options.conversationSessionId,
+      )
     } catch (cause) {
       fail(cause)
       return
@@ -434,6 +443,7 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
 
 export function connectIflytekRealtimeStt(options: {
   language?: string
+  sessionId?: string
   handlers?: RealtimeSttHandlers
 }): Promise<RealtimeSttClient> {
   const handlers = options.handlers ?? {}
@@ -448,6 +458,7 @@ export function connectIflytekRealtimeStt(options: {
     const turn = createIflytekTurn({
       previous,
       language: options.language,
+      conversationSessionId: options.sessionId,
       handlers,
       eager: isFirstTurn,
     })

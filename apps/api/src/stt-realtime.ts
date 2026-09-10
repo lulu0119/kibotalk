@@ -1,5 +1,5 @@
 /**
- * Authenticated WebSocket relay: product client thin protocol ↔ DashScope
+ * Authenticated WebSocket proxy: product client thin protocol ↔ DashScope
  * Qwen realtime upstream. Audio is counted in memory and never persisted.
  */
 import { randomUUID } from 'node:crypto'
@@ -15,25 +15,20 @@ import {
 } from '@kibotalk/stt'
 import { WebSocket, WebSocketServer } from 'ws'
 import { refreshActiveAiSession } from './active-session'
-import type { RequestAuth } from './auth'
+import {
+  acquireWebsocket,
+  releaseWebsocket,
+  type SessionIdentity,
+} from './ai-session-state'
+import { consumeWebsocketTicket } from './auth'
 import { databaseConfigured } from './db'
 import { MAX_TURN_OVERDRAW_SECONDS } from './quota'
-import { billCompletedRelayTurn } from './relay-billing'
-import type { RelayRequestAuth } from './relay-request-auth'
-import {
-  acquireRelayWebsocket,
-  consumeRelayWebsocketTicket,
-  relayRemainingSeconds,
-  releaseRelayWebsocket,
-  touchRelaySession,
-} from './relay-session-state'
-import { serverRole } from './server-role'
+import { billCompletedSttTurn, remainingQuotaSeconds } from './stt-billing'
 import { recordTelemetryLater } from './telemetry'
 
 const PATHS = new Set(['/api/stt-realtime', '/stt-realtime'])
 const SAMPLE_RATE = 16000
 const MAX_WEBSOCKET_MESSAGE_BYTES = 2 * 1024 * 1024
-const role = serverRole()
 
 export function attachSttRealtimeUpgrade(server: Server): WebSocketServer {
   const websocketServer = new WebSocketServer({
@@ -77,44 +72,39 @@ async function handleConnection(
     }
   }
 
+  if (provider !== 'dashscope-realtime') {
+    send({ type: 'error', code: 'STT_PROVIDER_NOT_ACTIVE', message: '该连接只接受 DashScope 实时转写' })
+    clientWebsocket.close()
+    return
+  }
+
   if (!ticket) {
     send({ type: 'error', code: 'AUTH_REQUIRED', message: '登录已失效，请重新登录' })
     clientWebsocket.close()
     return
   }
-  const claims = consumeRelayWebsocketTicket(ticket)
-  if (!claims) {
+  const auth = await consumeWebsocketTicket(ticket)
+  if (!auth) {
     send({ type: 'error', code: 'INVALID_WS_TICKET', message: '连接票据无效或已过期' })
     clientWebsocket.close()
     return
   }
-  if (
-    claims.conversationSessionId !== conversationSessionId
-    || claims.sttProvider !== provider
-  ) {
-    send({ type: 'error', code: 'RELAY_SESSION_MISMATCH', message: '会话节点或转写能力不匹配' })
+  const identity: SessionIdentity = {
+    userId: auth.userId,
+    deviceSessionId: auth.deviceSessionId,
+    conversationSessionId,
+  }
+  if ((await remainingQuotaSeconds(auth.userId)) <= 0) {
+    send({ type: 'quota_exhausted' })
     clientWebsocket.close()
     return
   }
-  const auth: RequestAuth = {
-    userId: claims.userId,
-    deviceSessionId: claims.deviceSessionId,
-    platform: 'web',
-    clientVersion: 'relay',
-    email: '',
-    isAdmin: false,
-  }
-  const relayAuth: RelayRequestAuth = { claims, requestAuth: auth }
-  if (!acquireRelayWebsocket(claims)) {
-    send(
-      relayRemainingSeconds(claims) <= 0
-        ? { type: 'quota_exhausted' }
-        : {
-            type: 'error',
-            code: 'STT_CONNECTION_LIMIT',
-            message: '该会话已有过多实时转写连接',
-          },
-    )
+  if (!acquireWebsocket(identity)) {
+    send({
+      type: 'error',
+      code: 'STT_CONNECTION_LIMIT',
+      message: '该会话已有过多实时转写连接',
+    })
     clientWebsocket.close()
     return
   }
@@ -122,7 +112,7 @@ async function handleConnection(
   const releaseLease = () => {
     if (activeReleased) return
     activeReleased = true
-    releaseRelayWebsocket(claims)
+    releaseWebsocket(identity)
   }
 
   let config
@@ -245,14 +235,11 @@ async function handleConnection(
     }
     void (async () => {
       try {
-        const deduction = await billCompletedRelayTurn({
-          role,
-          auth: relayAuth,
+        const deduction = await billCompletedSttTurn({
+          auth,
+          conversationSessionId,
           requestId: billing.requestId,
           audioSeconds: billing.samples / SAMPLE_RATE,
-          provider: 'dashscope',
-          model: config.model,
-          durationMs: Date.now() - billing.startedAt,
         })
         send(thin)
         recordTelemetryLater(auth, {
@@ -361,12 +348,7 @@ async function handleConnection(
         return
       }
       currentTurnSamples += samples
-      touchRelaySession(claims)
-      if (
-        role === 'primary'
-        && databaseConfigured()
-        && Date.now() - lastLeaseRefreshAt > 20_000
-      ) {
+      if (databaseConfigured() && Date.now() - lastLeaseRefreshAt > 20_000) {
         lastLeaseRefreshAt = Date.now()
         void refreshActiveAiSession({
           userId: auth.userId,

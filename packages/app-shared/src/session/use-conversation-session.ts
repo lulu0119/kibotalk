@@ -34,12 +34,6 @@ import {
   finalizedTurnFromRealtimeSegments,
   type TranscribedAudioSegment,
 } from './realtime-turn'
-import {
-  openRelaySession,
-  releaseRelaySession,
-  releaseRelaySessionById,
-} from '../api-runtime'
-import type { RelayProbeResult } from '../relay-routing'
 
 export type SessionTurn = ConversationTurn & { candidates?: ReplyCandidate[] }
 
@@ -109,8 +103,6 @@ export function useConversationSession(params: ConversationSessionParams) {
   const [activeSession, setActiveSession] = useState<ConversationSession | null>(null)
   const [recoveredUnexpectedPause, setRecoveredUnexpectedPause] = useState(false)
   const [quotaExhausted, setQuotaExhausted] = useState(false)
-  const [relayNodeId, setRelayNodeId] = useState<string | null>(null)
-  const [relayLatencyMs, setRelayLatencyMs] = useState<number | null>(null)
 
   const stableSpeakerRef = useRef<'user' | 'other'>('other')
   const paramsRef = useRef(params)
@@ -237,11 +229,7 @@ export function useConversationSession(params: ConversationSessionParams) {
     }
   }
 
-  async function start(options: {
-    resume?: boolean
-    relayNodeId?: string
-    relayProbeResults?: RelayProbeResult[]
-  } = {}) {
+  async function start(options: { resume?: boolean } = {}) {
     if (startInFlightRef.current || lifecycle === 'starting' || running) return
     startInFlightRef.current = true
     setError('')
@@ -255,10 +243,8 @@ export function useConversationSession(params: ConversationSessionParams) {
     if (!resuming) setQuotaExhausted(false)
     let conversationSessionId = `ephemeral-${Date.now()}`
     try {
-      let frozenRelayNodeId: string | undefined
       let pendingSessionStart: {
         id: string
-        relayNodeId: string
         startedAt: number
         snapshot: ConversationSessionSnapshot
         title: string
@@ -280,7 +266,6 @@ export function useConversationSession(params: ConversationSessionParams) {
           const resumed = await storageRef.current.resumeActiveSession()
           if (!resumed) throw new Error('NO_SESSION_TO_RESUME')
           conversationSessionId = resumed.id
-          frozenRelayNodeId = resumed.relayNodeId
           setActiveSession(resumed)
           setRecoveredUnexpectedPause(false)
         } else {
@@ -292,7 +277,6 @@ export function useConversationSession(params: ConversationSessionParams) {
             ?? `${startedAt}-${Math.random().toString(36).slice(2)}`
           pendingSessionStart = {
             id: conversationSessionId,
-            relayNodeId: '',
             startedAt,
             snapshot,
             title: paramsRef.current.sessionTitle ?? '',
@@ -303,25 +287,8 @@ export function useConversationSession(params: ConversationSessionParams) {
       const p = paramsRef.current
       const selectedProvider = p.selectedProvider
       if (!selectedProvider) throw new Error('STT_PROVIDER_REQUIRED')
-      const selectedRelayNodeId = frozenRelayNodeId ?? options.relayNodeId
-      if (!selectedRelayNodeId) throw new Error('RELAY_NODE_SELECTION_REQUIRED')
-      setLoading('正在连接所选网络节点…')
-      const relaySelection = await openRelaySession({
-        conversationSessionId,
-        nodeId: selectedRelayNodeId,
-        probeResults: options.relayProbeResults,
-      })
-      setRelayNodeId(relaySelection.node.id)
-      setRelayLatencyMs(relaySelection.latencyMs)
-      const relayStatus =
-        relaySelection.latencyMs === null
-          ? `网络节点：${relaySelection.node.id}`
-          : `网络节点：${relaySelection.node.id}（${Math.round(relaySelection.latencyMs)} ms）`
       if (pendingSessionStart) {
-        const created = await storageRef.current.startSession({
-          ...pendingSessionStart,
-          relayNodeId: relaySelection.node.id,
-        })
+        const created = await storageRef.current.startSession(pendingSessionStart)
         setActiveSession(created)
       }
       const audioSourceMode = p.sessionSnapshot?.audioSource ?? 'microphone'
@@ -393,7 +360,7 @@ export function useConversationSession(params: ConversationSessionParams) {
         },
       })
       realtimeRef.current = rt
-      setStatusNote(`${relayStatus}；实时转写已连接。`)
+      setStatusNote('实时转写已连接。')
 
       const realtimeAggregator = createSegmentAggregator<TranscribedAudioSegment>({
         sampleRate: audio.sampleRate,
@@ -675,8 +642,6 @@ export function useConversationSession(params: ConversationSessionParams) {
       releaseCapture()
       await realtimeBusyRef.current.catch(() => {})
       flushRealtimeAggregators()
-      await releaseRelaySession(false)
-      await releaseRelaySessionById(conversationSessionId, false)
       if (paramsRef.current.persistSessionLifecycle) {
         // Abort the half-started session so the real error is visible
         // (session errors are hidden while lifecycle === 'paused').
@@ -764,7 +729,6 @@ export function useConversationSession(params: ConversationSessionParams) {
     await realtimeBusyRef.current.catch(() => {})
     flushRealtimeAggregators()
     await pipelineBusyRef.current.catch(() => {})
-    await releaseRelaySession(false)
     if (paramsRef.current.persistSessionLifecycle) {
       const paused = await storageRef.current.pauseActiveSession(reason)
       setActiveSession(paused)
@@ -791,7 +755,6 @@ export function useConversationSession(params: ConversationSessionParams) {
     await pipelineBusyRef.current.catch(() => {})
     await pipeline?.idle().catch(() => {})
     settlingPipelineRef.current = null
-    await releaseRelaySession(true)
     if (paramsRef.current.persistSessionLifecycle) {
       const stopped = await storageRef.current.stopActiveSession()
       setActiveSession(stopped)
@@ -807,8 +770,6 @@ export function useConversationSession(params: ConversationSessionParams) {
   }
 
   async function clearSession() {
-    const sessionId = activeSession?.id
-    if (sessionId) await releaseRelaySessionById(sessionId, true)
     await storageRef.current.clearActiveSession()
     setTurns([])
     setDraft(null)
@@ -836,8 +797,6 @@ export function useConversationSession(params: ConversationSessionParams) {
     activeSession,
     recoveredUnexpectedPause,
     quotaExhausted,
-    relayNodeId,
-    relayLatencyMs,
     start,
     pause,
     resume,

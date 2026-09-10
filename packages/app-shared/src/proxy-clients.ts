@@ -7,7 +7,7 @@ import type {
 } from '@kibotalk/conversation'
 import { parseSseStream } from './sse'
 import { extractCandidates } from './partial-json'
-import { relayFetch } from './api-runtime'
+import { authorizedFetch } from './api-runtime'
 
 /** Session snapshot of language prefs (frozen at session start). */
 export type SessionLanguageSnapshot = {
@@ -58,7 +58,7 @@ export class ProxyLlmClient implements LlmClient {
       yield { type: 'done' }
       return
     }
-    const res = await relayFetch('/api/llm', {
+    const res = await authorizedFetch('/api/llm', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
