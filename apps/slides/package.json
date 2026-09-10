@@ -1,0 +1,17 @@
+{
+  "name": "@kibotalk/slides",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "slidev --open --port 3031",
+    "build": "slidev build --base ./",
+    "preview": "slidev --port 3031",
+    "export:html": "slidev build --base ./ --out dist",
+    "serve:dist": "python3 -m http.server 4173 --directory dist"
+  },
+  "devDependencies": {
+    "@slidev/cli": "52.19.1",
+    "@slidev/theme-default": "0.25.0"
+  }
+}
