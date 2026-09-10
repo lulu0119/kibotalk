@@ -46,6 +46,11 @@ export interface LlmClient {
 
 export type LlmAdapterFactory = (opts: LlmClientOptions) => LlmClient
 
+const extraHeaders = {
+  'User-Agent': 'kibotalk/0.1.0',
+  'x-opencode-session': 'kibotalk',
+}
+
 /**
  * xsai streaming adapter. OpenRouter (and any OpenAI-compatible endpoint) works
  * with just a base URL + Bearer key; xsai handles `stream: true`, the SSE
@@ -60,6 +65,7 @@ function createXsaiClient({ baseUrl, apiKey, model, thinking }: LlmClientOptions
         baseURL: baseUrl,
         model,
         messages,
+        headers: extraHeaders,
         abortSignal: signal,
         thinking: { type: thinking },
       })
@@ -76,6 +82,7 @@ function createXsaiClient({ baseUrl, apiKey, model, thinking }: LlmClientOptions
         baseURL: baseUrl,
         model,
         messages,
+        headers: extraHeaders,
         abortSignal: signal,
         // DeepSeek OpenAI-compatible extension; ignored by providers that don't use it.
         thinking: { type: thinking },

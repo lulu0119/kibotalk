@@ -75,6 +75,8 @@ describe('createLlmClient — OpenRouter streaming adapter', () => {
     const headers = new Headers(fetchCalls[0].init.headers as HeadersInit)
     expect(headers.get('Authorization')).toBe('Bearer secret-key')
     expect(headers.get('Content-Type')).toBe('application/json')
+    expect(headers.get('x-opencode-session')).toBe('kibotalk')
+    expect(headers.get('User-Agent')).toBe('kibotalk/0.1.0')
     const body = JSON.parse(fetchCalls[0].init.body as string)
     expect(body).toMatchObject({
       model: 'gpt-4o-mini',
