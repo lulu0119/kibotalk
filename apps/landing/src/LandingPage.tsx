@@ -2,13 +2,10 @@ import {
   ArrowDownToLine,
   ArrowUpRight,
   Check,
-  CircleDollarSign,
-  ExternalLink,
   Languages,
   Pause,
   Sparkles,
   Square,
-  WalletCards,
 } from 'lucide-react'
 import {
   Badge,
@@ -98,9 +95,6 @@ function Header({ locale }: { locale: Locale }) {
           </a>
           <a className="header-link" href="#story">
             {content.nav.story}
-          </a>
-          <a className="header-link" href="#payment">
-            {content.nav.payment}
           </a>
           <a className="header-link" href="#mission">
             {content.nav.mission}
@@ -255,37 +249,10 @@ function StorySection({ locale }: { locale: Locale }) {
         </div>
 
         <div className="story-grid">
-          <Card className="story-card lite-card">
-            <CardContent>
-              <div className="story-card-topline">
-                <Badge variant="secondary">{story.liteLabel}</Badge>
-                <span>01</span>
-              </div>
-              <img className="lite-icon" src="/assets/kibo-icon.png" alt="" />
-              <h3>{story.liteTitle}</h3>
-              <p>{story.liteBody}</p>
-              <ol className="story-steps">
-                {story.steps.map((step, index) => (
-                  <li key={step}>
-                    <span>{index + 1}</span>
-                    {step}
-                  </li>
-                ))}
-              </ol>
-              <Button asChild variant="outline">
-                <a href={lingguangUrl} target="_blank" rel="noreferrer">
-                  {actions.lite}
-                  <ExternalLink aria-hidden />
-                </a>
-              </Button>
-            </CardContent>
-          </Card>
-
           <Card className="story-card production-card">
             <CardContent>
               <div className="story-card-topline">
                 <Badge>{story.productionLabel}</Badge>
-                <span>02</span>
               </div>
               <img
                 className="production-wordmark"
@@ -311,57 +278,6 @@ function StorySection({ locale }: { locale: Locale }) {
             </CardContent>
           </Card>
         </div>
-      </div>
-    </section>
-  )
-}
-
-function PaymentSection({ locale }: { locale: Locale }) {
-  const { payment } = copy[locale]
-
-  return (
-    <section id="payment" className="payment-section">
-      <div className="page-shell payment-layout">
-        <div className="payment-copy">
-          <p className="section-kicker">{payment.eyebrow}</p>
-          <h2 className="section-title">{payment.title}</h2>
-          <p className="section-body">{payment.body}</p>
-          <div className="payment-context">
-            <Badge variant="outline">{payment.testnetLabel}</Badge>
-            <span>{payment.hackathonNote}</span>
-          </div>
-        </div>
-
-        <Card className="payment-card">
-          <CardContent>
-            <div className="payment-rail">
-              <span className="payment-icon">
-                <WalletCards aria-hidden />
-              </span>
-              <span className="payment-rail-copy">
-                <strong>Injective</strong>
-                <span>{payment.injectiveDetail}</span>
-              </span>
-              <Badge variant="secondary">{payment.soon}</Badge>
-            </div>
-
-            <div className="payment-rail">
-              <span className="payment-icon">
-                <CircleDollarSign aria-hidden />
-              </span>
-              <span className="payment-rail-copy">
-                <strong>USDC</strong>
-                <span>{payment.usdcDetail}</span>
-              </span>
-              <Badge variant="secondary">{payment.soon}</Badge>
-            </div>
-
-            <Button type="button" disabled className="w-full">
-              {payment.button}
-            </Button>
-            <p className="payment-disclaimer">{payment.disclaimer}</p>
-          </CardContent>
-        </Card>
       </div>
     </section>
   )
@@ -450,7 +366,6 @@ export function LandingPage({ locale }: { locale: Locale }) {
         <SceneMap locale={locale} />
         <ProductSection locale={locale} />
         <StorySection locale={locale} />
-        <PaymentSection locale={locale} />
         <MissionSection locale={locale} />
       </main>
       <Footer locale={locale} />

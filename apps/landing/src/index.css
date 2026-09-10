@@ -343,7 +343,9 @@ a {
   display: grid;
   gap: 1.5rem;
   margin-top: clamp(3rem, 6vw, 5rem);
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  max-width: 36rem;
+  margin-inline: auto;
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .story-card {
@@ -360,10 +362,6 @@ a {
   padding: clamp(1.5rem, 4vw, 2.5rem);
 }
 
-.lite-card {
-  border-color: rgb(255 100 0 / 0.42);
-}
-
 .production-card {
   border-color: color-mix(in srgb, var(--primary) 70%, var(--border));
 }
@@ -377,14 +375,6 @@ a {
   font-size: 0.78rem;
   font-weight: 850;
   letter-spacing: 0.1em;
-}
-
-.lite-icon {
-  width: 5.5rem;
-  height: 5.5rem;
-  margin-top: 2.5rem;
-  border-radius: 1.5rem;
-  box-shadow: var(--shadow-tier1-lg);
 }
 
 .production-wordmark {
@@ -411,40 +401,6 @@ a {
   line-height: 1.75;
 }
 
-.story-steps {
-  display: flex;
-  width: 100%;
-  flex-direction: column;
-  gap: 0.85rem;
-  margin: 1.8rem 0;
-  padding: 0;
-  list-style: none;
-}
-
-.story-steps li {
-  display: flex;
-  gap: 0.8rem;
-  align-items: center;
-  color: var(--foreground);
-  font-size: 0.9rem;
-  font-weight: 700;
-}
-
-.story-steps li > span {
-  display: inline-flex;
-  width: 1.75rem;
-  height: 1.75rem;
-  flex: 0 0 auto;
-  align-items: center;
-  justify-content: center;
-  color: var(--primary-foreground);
-  background: var(--primary);
-  border-radius: 9999px;
-  font-size: 0.7rem;
-  font-weight: 900;
-  box-shadow: var(--shadow-tier0);
-}
-
 .capability-list {
   display: flex;
   flex-wrap: wrap;
@@ -459,105 +415,6 @@ a {
 
 .story-card > div > a:last-child {
   margin-top: auto;
-}
-
-.payment-section {
-  padding-block: clamp(6rem, 12vw, 10rem);
-  background: color-mix(in srgb, var(--primary) 7%, var(--background));
-  border-bottom: 1px solid var(--border);
-}
-
-.payment-layout {
-  display: grid;
-  gap: clamp(3rem, 8vw, 7rem);
-  align-items: center;
-  grid-template-columns: minmax(16rem, 0.85fr) minmax(25rem, 1.15fr);
-}
-
-.payment-copy {
-  max-width: 34rem;
-}
-
-.payment-context {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-  align-items: center;
-  margin-top: 1.75rem;
-}
-
-.payment-context > span {
-  color: var(--muted-foreground);
-  font-size: 0.8rem;
-  font-weight: 700;
-}
-
-.payment-card {
-  border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
-  border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-panel);
-}
-
-.payment-card > div {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-  padding: clamp(1.25rem, 4vw, 2rem);
-}
-
-.payment-rail {
-  display: grid;
-  gap: 1rem;
-  align-items: center;
-  padding: 1rem;
-  background: var(--background);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  grid-template-columns: auto minmax(0, 1fr) auto;
-}
-
-.payment-icon {
-  display: inline-flex;
-  width: 2.75rem;
-  height: 2.75rem;
-  align-items: center;
-  justify-content: center;
-  background: color-mix(in srgb, var(--primary) 24%, var(--background));
-  border-radius: var(--radius-md);
-  @apply text-orange-500;
-}
-
-.payment-icon svg {
-  width: 1.25rem;
-  height: 1.25rem;
-}
-
-.payment-rail-copy {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 0.2rem;
-}
-
-.payment-rail-copy strong {
-  color: var(--foreground);
-  font-size: 1rem;
-  font-weight: 900;
-}
-
-.payment-rail-copy > span {
-  color: var(--muted-foreground);
-  font-size: 0.78rem;
-  font-weight: 600;
-}
-
-.payment-disclaimer {
-  margin: 0;
-  color: var(--muted-foreground);
-  font-size: 0.72rem;
-  font-weight: 600;
-  line-height: 1.5;
-  text-align: center;
 }
 
 .mission-section {
@@ -663,7 +520,6 @@ a {
 @media (max-width: 900px) {
   .scene-layout,
   .product-layout,
-  .payment-layout,
   .mission-layout {
     grid-template-columns: 1fr;
   }
@@ -673,8 +529,7 @@ a {
   }
 
   .scene-heading,
-  .product-copy,
-  .payment-copy {
+  .product-copy {
     max-width: 38rem;
   }
 
@@ -768,11 +623,6 @@ a {
 
   .story-card a {
     width: 100%;
-  }
-
-  .payment-rail {
-    gap: 0.75rem;
-    padding: 0.85rem;
   }
 
   .mission-layout {

@@ -8,13 +8,11 @@ type LandingCopy = {
     scenes: string
     product: string
     story: string
-    payment: string
     mission: string
   }
   actions: {
     web: string
     mac: string
-    lite: string
     top: string
   }
   hero: {
@@ -53,26 +51,10 @@ type LandingCopy = {
     eyebrow: string
     title: string
     body: string
-    liteLabel: string
-    liteTitle: string
-    liteBody: string
     productionLabel: string
     productionTitle: string
     productionBody: string
-    steps: string[]
     capabilities: string[]
-  }
-  payment: {
-    eyebrow: string
-    title: string
-    body: string
-    testnetLabel: string
-    hackathonNote: string
-    injectiveDetail: string
-    usdcDetail: string
-    soon: string
-    button: string
-    disclaimer: string
   }
   mission: {
     eyebrow: string
@@ -97,13 +79,11 @@ export const copy: Record<Locale, LandingCopy> = {
       scenes: '真实场景',
       product: '如何工作',
       story: '开发故事',
-      payment: '支付计划',
       mission: '我们的使命',
     },
     actions: {
       web: '立即体验 Web 版',
       mac: '下载 macOS 版',
-      lite: '体验最初的闪应用',
       top: '回到顶部',
     },
     hero: {
@@ -152,28 +132,12 @@ export const copy: Record<Locale, LandingCopy> = {
     },
     story: {
       eyebrow: 'FROM VALIDATION TO PRODUCTION',
-      title: '一句话做出原型，然后把它做成真正可用的产品。',
-      body: 'KiboTalk Lite 在灵光上快速验证了一个判断：人们缺的往往不是翻译，而是对话现场能说出口的下一句。验证成立后，我们开始为真实世界补齐生产级能力。',
-      liteLabel: '最初的验证',
-      liteTitle: 'KiboTalk Lite',
-      liteBody: '用一句话创建的灵光闪应用，让核心交互在最短时间里接受真实反馈。',
+      title: '把现场能说出口的下一句，做成真正可用的产品。',
+      body: '人们缺的往往不是翻译，而是对话现场能说出口的下一句。我们从端侧音频判断做到多端会话同步，把这个判断做成可以长期使用的产品。',
       productionLabel: '现在的产品',
       productionTitle: 'KiboTalk 自研栈',
       productionBody: '从端侧音频判断到多端会话同步，把一次灵感变成可以长期使用的产品。',
-      steps: ['一句话生成闪应用', '验证“听懂却答不上来”的真实需求', '转向生产级多端自研'],
       capabilities: ['端侧语音活动检测', '声纹验证', '实时转写', '加密会话同步', '账号与额度', 'Web / PWA / 桌面端'],
-    },
-    payment: {
-      eyebrow: 'PAYMENT · COMING SOON',
-      title: '更灵活的支付方式，正在准备。',
-      body: '我们计划支持基于 Injective 网络的 USDC 支付。当前仅展示支付入口，尚未开放充值、扣款或链上结算。',
-      testnetLabel: 'Injective EVM Testnet',
-      hackathonNote: 'AdventureX 黑客松预览',
-      injectiveDetail: '计划接入的支付网络',
-      usdcDetail: '计划支持的稳定币',
-      soon: '即将开放',
-      button: 'Injective / USDC 支付即将开放',
-      disclaimer: '这是测试网与黑客松展示，不会发起真实付款。',
     },
     mission: {
       eyebrow: 'READY FOR THE REAL CONVERSATION',
@@ -196,13 +160,11 @@ export const copy: Record<Locale, LandingCopy> = {
       scenes: 'リアルな場面',
       product: '使い方',
       story: '開発ストーリー',
-      payment: '支払い予定',
       mission: '私たちの使命',
     },
     actions: {
       web: 'Web版を試す',
       mac: 'macOS版をダウンロード',
-      lite: '最初のFlash Appを試す',
       top: 'ページ上部へ',
     },
     hero: {
@@ -251,28 +213,12 @@ export const copy: Record<Locale, LandingCopy> = {
     },
     story: {
       eyebrow: 'FROM VALIDATION TO PRODUCTION',
-      title: '一言でプロトタイプを作り、実世界で使えるプロダクトへ。',
-      body: 'KiboTalk Liteは、灵光で素早く仮説を検証しました。必要なのは翻訳だけではなく、会話の現場で口にできる「次の一言」。手応えを得たあと、本番運用に必要な基盤を自分たちで作り始めました。',
-      liteLabel: '最初の検証',
-      liteTitle: 'KiboTalk Lite',
-      liteBody: '一言から生まれた灵光のFlash Appで、コア体験を最短距離でユーザーに届けました。',
+      title: '会話の現場で口にできる次の一言を、長く使えるプロダクトへ。',
+      body: '必要なのは翻訳だけではなく、会話の現場で口にできる「次の一言」。端末上の音声処理からマルチデバイス同期まで、その判断を長く使えるプロダクトにしています。',
       productionLabel: '現在のプロダクト',
       productionTitle: 'KiboTalk 自社開発スタック',
       productionBody: '端末上の音声処理からマルチデバイス同期まで、ひらめきを長く使えるプロダクトへ。',
-      steps: ['一言からFlash Appを生成', '「分かるのに返せない」課題を検証', '本番品質のマルチデバイス開発へ'],
       capabilities: ['端末上の音声区間検出', '話者照合', 'リアルタイム文字起こし', '暗号化された会話同期', 'アカウントと利用枠', 'Web / PWA / デスクトップ'],
-    },
-    payment: {
-      eyebrow: 'PAYMENT · COMING SOON',
-      title: 'より柔軟な支払い方法を準備中です。',
-      body: 'Injectiveネットワークを利用したUSDC決済に対応する予定です。現在は案内のみで、入金・請求・オンチェーン決済はまだ利用できません。',
-      testnetLabel: 'Injective EVM Testnet',
-      hackathonNote: 'AdventureX ハッカソン向けプレビュー',
-      injectiveDetail: '対応予定の決済ネットワーク',
-      usdcDetail: '対応予定のステーブルコイン',
-      soon: '近日公開',
-      button: 'Injective / USDC 決済は近日公開',
-      disclaimer: 'テストネットとハッカソン向けの表示です。実際の支払いは発生しません。',
     },
     mission: {
       eyebrow: 'READY FOR THE REAL CONVERSATION',
@@ -295,13 +241,11 @@ export const copy: Record<Locale, LandingCopy> = {
       scenes: 'Real moments',
       product: 'How it works',
       story: 'Our build story',
-      payment: 'Payment plans',
       mission: 'Our mission',
     },
     actions: {
       web: 'Try the Web app',
       mac: 'Download for macOS',
-      lite: 'Try the original Flash App',
       top: 'Back to top',
     },
     hero: {
@@ -350,28 +294,12 @@ export const copy: Record<Locale, LandingCopy> = {
     },
     story: {
       eyebrow: 'FROM VALIDATION TO PRODUCTION',
-      title: 'One sentence made the prototype. Then we built the product for real life.',
-      body: 'KiboTalk Lite, created on Lingguang, let us validate one idea quickly: people often need more than translation—they need the next sentence they can actually say. Once that proved true, we started building the production foundation ourselves.',
-      liteLabel: 'The first validation',
-      liteTitle: 'KiboTalk Lite',
-      liteBody: 'A Lingguang Flash App created from one sentence put the core interaction in front of real people, fast.',
+      title: 'The next sentence you can actually say, built for real life.',
+      body: 'People often need more than translation—they need the next sentence they can actually say. From on-device audio decisions to cross-device conversation sync, we turned that into a product people can rely on.',
       productionLabel: 'The product today',
       productionTitle: 'The KiboTalk stack',
       productionBody: 'From on-device audio decisions to cross-device conversation sync, we are turning the spark into a product people can rely on.',
-      steps: ['Create a Flash App from one sentence', 'Validate the “understood but could not reply” moment', 'Build the production-grade, multi-device product'],
       capabilities: ['On-device voice activity detection', 'Speaker verification', 'Live transcription', 'Encrypted conversation sync', 'Accounts and usage allowance', 'Web / PWA / desktop'],
-    },
-    payment: {
-      eyebrow: 'PAYMENT · COMING SOON',
-      title: 'More flexible ways to pay are on the way.',
-      body: 'We plan to support USDC payments on the Injective network. For now, this is a preview only: deposits, charges, and on-chain settlement are not yet available.',
-      testnetLabel: 'Injective EVM Testnet',
-      hackathonNote: 'AdventureX hackathon preview',
-      injectiveDetail: 'Planned payment network',
-      usdcDetail: 'Planned stablecoin',
-      soon: 'Coming soon',
-      button: 'Injective / USDC payments coming soon',
-      disclaimer: 'Testnet and hackathon preview only. No real payment will be initiated.',
     },
     mission: {
       eyebrow: 'READY FOR THE REAL CONVERSATION',
