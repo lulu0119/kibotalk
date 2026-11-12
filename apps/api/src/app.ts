@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { serveStatic } from '@hono/node-server/serve-static'
 import type { AppLanguage, ConversationTurn, LearnerLevel } from '@kibotalk/conversation'
 import { createLlmClient, llmConfigFromEnv, type LlmUsage } from '@kibotalk/llm'
-import { buildReplySuggestionsMessages, buildSessionReviewMessages } from '@kibotalk/prompts'
+import { buildReplySuggestionsMessages } from '@kibotalk/prompts'
 import { listSttProviders } from '@kibotalk/stt'
 import { Hono } from 'hono'
 import { bodyLimit } from 'hono/body-limit'
@@ -226,11 +226,7 @@ app.post('/api/llm', async (context) => {
   }
   let aiAuthorization: AiUseAuthorization
   try {
-    aiAuthorization = await authorizeAiUse({
-      userId: auth.userId,
-      conversationSessionId,
-      kind: 'reply',
-    })
+    aiAuthorization = await authorizeAiUse(auth.userId, conversationSessionId)
   } catch {
     releaseLlmSlot(identity)
     return context.json({ error: 'QUOTA_UNAVAILABLE' }, 503)
@@ -283,11 +279,7 @@ app.post('/api/llm', async (context) => {
       })
     } catch (cause) {
       if (aiAuthorization.allowanceConsumed && !context.req.raw.signal.aborted) {
-        await refundAiAllowance({
-          userId: auth.userId,
-          conversationSessionId,
-          kind: 'reply',
-        }).catch(() => {})
+        await refundAiAllowance(auth.userId, conversationSessionId).catch(() => {})
       }
       if (!context.req.raw.signal.aborted) {
         await stream.writeSSE({
@@ -310,98 +302,12 @@ app.post('/api/llm', async (context) => {
   })
 })
 
-app.post('/api/session-review', async (context) => {
-  const auth = await requireRequestAuth(context)
-  if (auth instanceof Response) return auth
-  const requestId = randomUUID()
-  const startedAt = Date.now()
-  const body = (await context.req.json().catch(() => null)) as {
-    turns?: ConversationTurn[]
-    conversationLang?: string
-    uiLang?: string
-    sessionId?: unknown
-  } | null
-  const conversationSessionId =
-    typeof body?.sessionId === 'string' && body.sessionId.length <= 200
-      ? body.sessionId
-      : undefined
-  let aiAuthorization: AiUseAuthorization
-  try {
-    aiAuthorization = await authorizeAiUse({
-      userId: auth.userId,
-      conversationSessionId,
-      kind: 'review',
-    })
-  } catch {
-    return context.json({ error: 'QUOTA_UNAVAILABLE' }, 503)
-  }
-  if (!aiAuthorization.allowed) {
-    return context.json({ error: 'QUOTA_EXHAUSTED' }, 402)
-  }
-  const conversationLang = parseAppLanguage(body?.conversationLang, 'ja')
-  const uiLang = parseAppLanguage(body?.uiLang, 'en')
-  let usage: LlmUsage | undefined
-  try {
-    const config = llmConfigFromEnv(process.env)
-    const client = createLlmClient(config)
-    const messages = await buildSessionReviewMessages({
-      turns: body?.turns ?? [],
-      conversationLang,
-      uiLang,
-    })
-    const raw = await client.generateChat({
-      messages,
-      signal: context.req.raw.signal,
-      onUsage: (nextUsage) => {
-        usage = nextUsage
-      },
-    })
-    const parsed = JSON.parse(raw) as { title?: unknown; summary?: unknown }
-    if (typeof parsed.title !== 'string' || typeof parsed.summary !== 'string') {
-      throw new Error('invalid session review response')
-    }
-    const title = parsed.title.trim()
-    const summary = parsed.summary.trim()
-    if (!title || !summary) throw new Error('empty session review response')
-    recordTelemetryLater(auth, {
-      requestId,
-      eventType: 'session_review',
-      provider: config.provider,
-      model: config.model,
-      status: 'ok',
-      durationMs: Date.now() - startedAt,
-      inputTokens: usage?.inputTokens,
-      outputTokens: usage?.outputTokens,
-    })
-    return context.json({ title, summary })
-  } catch (cause) {
-    if (aiAuthorization.allowanceConsumed && !context.req.raw.signal.aborted) {
-      await refundAiAllowance({
-        userId: auth.userId,
-        conversationSessionId,
-        kind: 'review',
-      }).catch(() => {})
-    }
-    recordTelemetryLater(auth, {
-      requestId,
-      eventType: 'session_review',
-      status: 'error',
-      durationMs: Date.now() - startedAt,
-      inputTokens: usage?.inputTokens,
-      outputTokens: usage?.outputTokens,
-      errorCode: cause instanceof Error ? cause.name : 'UPSTREAM_ERROR',
-    })
-    return context.json({ error: cause instanceof Error ? cause.message : String(cause) }, 502)
-  }
-})
-
 // Legacy aliases keep the local playground/tests working while product clients
 // use the namespaced routes. Auth remains enforced because aliases re-enter
 // the same handlers.
 app.route('/', new Hono()
   .get('/stt/providers', (context) => app.fetch(new Request(new URL('/api/stt/providers', context.req.url), context.req.raw)))
-  .post('/llm', (context) => app.fetch(new Request(new URL('/api/llm', context.req.url), context.req.raw)))
-  .post('/session-review', (context) => app.fetch(new Request(new URL('/api/session-review', context.req.url), context.req.raw))))
+  .post('/llm', (context) => app.fetch(new Request(new URL('/api/llm', context.req.url), context.req.raw))))
 
 app.use('/*', serveStatic({ root: '../web/dist' }))
 app.get('*', serveStatic({ root: '../web/dist', path: './index.html' }))

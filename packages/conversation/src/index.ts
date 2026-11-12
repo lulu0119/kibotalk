@@ -5,8 +5,6 @@ export type {
 export type {
   AppLanguage,
   ConversationPauseReason,
-  ConversationReviewStatus,
-  ConversationReviewUpdate,
   ConversationSession,
   ConversationSessionSnapshot,
   ConversationSessionStart,

@@ -38,8 +38,6 @@ function sessionHistoryStorage(): InMemoryConversationStorage {
     },
     turns: fakeTurns,
     title: '车站问路',
-    summary: '问路与指路',
-    reviewStatus: 'ready',
   }
   void storage.upsertSession(base)
   void storage.upsertSession({

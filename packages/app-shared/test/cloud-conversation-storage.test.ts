@@ -57,7 +57,6 @@ function session(title: string): ConversationSession {
     },
     turns: [],
     title,
-    reviewStatus: 'ready',
   }
 }
 

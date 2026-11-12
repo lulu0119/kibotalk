@@ -1,7 +1,6 @@
 import type { ConversationStorage } from './storage'
 import type {
   ConversationPauseReason,
-  ConversationReviewUpdate,
   ConversationSession,
   ConversationSessionStart,
   ConversationTurn,
@@ -18,7 +17,6 @@ export class InMemoryConversationStorage implements ConversationStorage {
       status: 'running',
       pausedDurationMs: 0,
       turns: [],
-      reviewStatus: 'pending',
     }
     this.sessions.set(session.id, session)
     this.activeSessionId = session.id
@@ -124,12 +122,6 @@ export class InMemoryConversationStorage implements ConversationStorage {
   async deleteSession(sessionId: string): Promise<void> {
     this.sessions.delete(sessionId)
     if (this.activeSessionId === sessionId) this.activeSessionId = null
-  }
-
-  async updateSessionReview(sessionId: string, update: ConversationReviewUpdate): Promise<void> {
-    const session = this.sessions.get(sessionId)
-    if (!session) return
-    Object.assign(session, update)
   }
 
   async clearHistory(): Promise<void> {

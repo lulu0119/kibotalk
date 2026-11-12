@@ -1,4 +1,3 @@
-import { generateText } from '@xsai/generate-text'
 import { streamText } from '@xsai/stream-text'
 
 /**
@@ -37,11 +36,6 @@ export interface LlmClient {
     signal?: AbortSignal
     onUsage?: (usage: LlmUsage) => void
   }): AsyncIterable<string>
-  generateChat(args: {
-    messages: ChatMessage[]
-    signal?: AbortSignal
-    onUsage?: (usage: LlmUsage) => void
-  }): Promise<string>
 }
 
 export type LlmAdapterFactory = (opts: LlmClientOptions) => LlmClient
@@ -59,23 +53,6 @@ const extraHeaders = {
  */
 function createXsaiClient({ baseUrl, apiKey, model, thinking }: LlmClientOptions): LlmClient {
   return {
-    async generateChat({ messages, signal, onUsage }) {
-      const { text, usage } = await generateText({
-        apiKey,
-        baseURL: baseUrl,
-        model,
-        messages,
-        headers: extraHeaders,
-        abortSignal: signal,
-        thinking: { type: thinking },
-      })
-      onUsage?.({
-        inputTokens: usage.prompt_tokens,
-        outputTokens: usage.completion_tokens,
-        totalTokens: usage.total_tokens,
-      })
-      return text ?? ''
-    },
     async *streamChat({ messages, signal, onUsage }) {
       const result = streamText({
         apiKey,

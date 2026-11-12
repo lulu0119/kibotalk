@@ -186,7 +186,6 @@ export async function migrateDatabase(): Promise<void> {
       user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       conversation_session_id text NOT NULL,
       reply_remaining integer NOT NULL DEFAULT 1 CHECK (reply_remaining BETWEEN 0 AND 1),
-      review_remaining integer NOT NULL DEFAULT 1 CHECK (review_remaining BETWEEN 0 AND 1),
       expires_at timestamptz NOT NULL,
       PRIMARY KEY (user_id, conversation_session_id)
     );

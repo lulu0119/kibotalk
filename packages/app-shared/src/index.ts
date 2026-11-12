@@ -97,7 +97,7 @@ export {
   I18nProvider,
   languageLabel,
   levelLabel,
-  localizedSessionFallbackTitle,
+  localizedSessionTitle,
   useI18n,
 } from './i18n'
 export type { MessageKey } from './i18n'
@@ -115,7 +115,3 @@ export type {
   ProductSessionController,
   ProductSessionParams,
 } from './session/use-product-session'
-export {
-  reviewConversationSession,
-  resumePendingSessionReviews,
-} from './session/review-session'

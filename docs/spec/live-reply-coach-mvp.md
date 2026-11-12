@@ -53,7 +53,7 @@
         → user 说完：STT → 写入对话 → 同样请求 LLM（由模型决定出候选或跳过）
     → 循环
     → 暂停（释放音频但保留同一会话）或停止（封存本会话）
-    → 停止后后台生成短标题与文字回顾；下次开始创建新会话
+    → 历史按会话开始日期、时间与对话语言命名，可回看转写和候选
 ```
 
 **语言轴（见 §1.4、[ADR 0003](../adr/0003-multilingual-conversation-and-meaning.md)）**：
@@ -84,11 +84,11 @@
 | F06 | 语言水平 | 统一三档 beginner / intermediate / advanced，存单一全局 `level`；进 prompt | 初级与高级输出可肉眼区分 |
 | F07 | 语言与 i18n | 首次确认界面语言 / 对话语言 / 水平；界面语言首次跟随系统，产品支持中日英；`meaningLang` 由 `uiLang` 派生 | 只在停止时可切换语言，UI 立即生效；新会话 STT/LLM 用新快照 |
 | F08 | 对话时间轴 | 单条 turn 流，按 speaker 区分展示 | 可回看每轮原文 |
-| F09 | 历史与结束回顾 | 本地长期保留会话；停止后后台生成冻结 `uiLang` 的短标题与小结，失败可重试 | 列表 / 详情可回看转写和候选；不保存原始音频 |
+| F09 | 会话历史 | 本地长期保留会话；按开始日期、时间与对话语言显示标题，格式由会话的 `uiLang` 决定 | 列表 / 详情可回看转写和当时的候选；不保存原始音频 |
 | F10 | 响应式 UI | iPhone Safari + Mac Chrome/Safari 同一 URL；宽屏 A+B 可折叠双栏，窄屏内容区对话层 | 无页面横向溢出；两栏等高并独立滚动 |
 | F11 | PWA（移动） | 可「添加到主屏幕」 | 全屏、少地址栏干扰 |
 | F12 | 账号与设备 | 新邮箱 OTP 注册；已有账户直接登录；Web 安全 cookie、桌面 safeStorage token；设备列表 / 撤销 / 封禁 | 未登录不能调用云 STT/LLM；同账号仅一个活跃 AI 会话 |
-| F13 | 云同步 | session / turn / suggestion / review / prefs 自动同步且无关闭开关；服务端 AES-256-GCM；不上传音频或声纹 | 本地先持久化并后台补同步；同步故障不阻塞新会话；支持单会话和账户删除 |
+| F13 | 云同步 | session / turn / suggestion / prefs 自动同步且无关闭开关；服务端 AES-256-GCM；不上传音频或声纹 | 本地先持久化并后台补同步；同步故障不阻塞新会话；支持单会话和账户删除 |
 | F14 | 额度与兑换 | 免费 30 分钟/月；Pro ¥30/30 天/600 分钟；永久分钟；兑换码与后台赠送 | 按实际 STT 秒数记账、分钟展示；免费 → Pro → 永久；上游失败不扣 |
 | F15 | 生产发布 | 日本 VPS + Caddy HTTPS + Postgres；Apple Silicon ad-hoc DMG；GitHub Actions CI/CD | `kibotalk.superpowerlulu.win` 健康；macOS 13+ arm64；Web Q8 模型首选固定 revision 的 Hugging Face、失败回退同源，桌面模型内置 |
 
@@ -164,8 +164,6 @@ type ConversationSession = {
   snapshot: ConversationSessionSnapshot
   turns: ConversationTurn[]
   title: string
-  summary?: string
-  reviewStatus: 'pending' | 'ready' | 'failed'
 }
 
 type ReplySegmentRole = 'content' | 'particle' | 'punct'
@@ -214,7 +212,7 @@ type ReplyCandidate = {
 | 听对方 / 听自己 → 出建议（由模型决定） | ✅ F02–F05 |
 | 感知用户说了什么 | ✅ F05 |
 | 语言水平 | ✅ F06（三档 + 按语言） |
-| 结束小结 | ✅ F09（冻结界面语言的短标题 + 总结） |
+| 历史回看 | ✅ F09（转写与当时的候选） |
 | AI 语音 / AI 问答 | ❌ |
 | 候选编辑 | ❌ 已砍 |
 
@@ -462,7 +460,7 @@ playground **声纹页**同时覆盖 P0-c（`enroll` + `saveEmbedding`）与 P0-
 
 **比赛生产采用 local-first + 强制云同步**：完整 `ConversationSession` 先持久化到 IndexedDB，并自动同步到 PostgreSQL 加密存储。提供 active-session 指针及历史列表 / 详情；每个正式 turn、候选和生命周期变化即时写入；不保存原始音频。历史无限期保留，直到用户删除。
 
-本地 IndexedDB 按账户 ID 隔离，切换账户时取消旧账户未完成的同步请求，服务端也会核对同步请求冻结的账户 ID。会话与偏好在上传成功前保留持久 dirty 标记并指数退避重试；首次登录必须先完成云端拉取，不能用设备默认偏好覆盖已有账户偏好。成功认证后只缓存不含 token 的最小账户快照；断网启动可据此进入对应账户的**只读历史**。离线时不能新建或删除会话、重试复盘或调用 AI，恢复初始云同步后才解除门禁。
+本地 IndexedDB 按账户 ID 隔离，切换账户时取消旧账户未完成的同步请求，服务端也会核对同步请求冻结的账户 ID。会话与偏好在上传成功前保留持久 dirty 标记并指数退避重试；首次登录必须先完成云端拉取，不能用设备默认偏好覆盖已有账户偏好。成功认证后只缓存不含 token 的最小账户快照；断网启动可据此进入对应账户的**只读历史**。离线时不能新建或删除会话，也无法调用 AI。
 
 **`packages/conversation` 接口**：
 
@@ -476,22 +474,21 @@ resumeActiveSession(): Promise<ConversationSession | null>
 stopActiveSession(): Promise<ConversationSession | null>
 listSessions(): Promise<ConversationSession[]>
 loadSession(sessionId): Promise<ConversationSession | null>
-updateSessionReview(sessionId, review): Promise<void>
 clearHistory(): Promise<void>
 ```
 
 - **开始**：创建新 `sessionId` 并冻结设置；新会话默认开启 AI 建议。
 - **暂停**：释放麦克风 / 系统采集，封存有效 partial，保留同一 session、上下文、界面和 AI 开关。
-- **停止**：等待已排队的定稿工作，封存 session；下一次开始必为新场景。短标题 / 总结异步生成，不阻塞新会话。
+- **停止**：等待已排队的定稿工作，封存 session；下一次开始创建新会话。
 - running / paused 在刷新、崩溃或设备中断后恢复为 `pauseReason: 'unexpected'`，可继续或停止。
 - 时长不计暂停区间。
 
 Realtime 连续语音也必须在 30 秒切成正式 turn（`SegmentAggregator.maxMs`）；
 服务端按 PCM 样本数再做同样上限。余额耗尽时，
-服务端只给该 session 一次最终建议和一次复盘 allowance，其余零余额 LLM 请求
+服务端只给该 session 一次最终建议 allowance，其余零余额 LLM 请求
 直接拒绝；上游失败不消费 allowance。
 
-停止时先写一个按冻结 `uiLang` 本地化的日期时间 + 对话语言标题；后台调用 `/session-review` 生成同语言短场景标题和小结。失败记录为 `failed`，历史页可重试；应用下次启动会继续 pending 任务。比赛生产不提供重命名，但会把会话、候选和复盘加密同步到所有登录设备。
+历史列表和详情从会话开始时间与对话语言生成标题，按会话冻结的 `uiLang` 本地化。已有会话也用同一规则显示标题。
 
 ### 2.5 提示词（Velin TSX）
 
@@ -575,7 +572,6 @@ packages/pipeline、speaker、llm、conversation  （真实实现）
 | 路由 | 协议 | 作用 | 备注 |
 |------|------|------|------|
 | `POST /api/llm` | **SSE 流式** | 接收对话上下文，转发 DeepSeek，流式回 3 条候选或 `[]` | 必须登录；key 只在服务端 env |
-| `POST /api/session-review` | 普通 POST | 用停止会话的冻结语言与 turn 文本生成短标题和总结 | 必须登录；客户端负责重试 |
 | `WS /api/stt-realtime` | **WebSocket** | 中转短令牌换单次票据；speech PCM / commit；DashScope 中继；计时扣额度 | 唯一 STT 路径；不保存音频 |
 | `/api/auth/*` | REST | 邮箱 OTP、当前账户、设备撤销、WS 单次票据 | Resend + 安全 cookie / bearer |
 | `/api/sync/*` | REST | 加密会话、删除 tombstone 与偏好同步 | AES-256-GCM；不含声纹 / 音频 |

@@ -4,6 +4,7 @@ import { Pipeline } from '@kibotalk/pipeline'
 import type {
   ConversationSession,
   ConversationSessionSnapshot,
+  ConversationSessionStart,
   ConversationStorage,
   ConversationTurn,
   ReplyCandidate,
@@ -22,6 +23,7 @@ import { AudioSource } from '../audio/audio-source'
 import { attachAudioIoSpans } from '../audio/io-spans'
 import { createSileroInfer, SILERO_VARIANTS } from '../audio/silero-vad'
 import { createWorkerEmbedAudio } from '../audio/speaker-embed'
+import { localizedSessionTitle } from '../i18n'
 import { createCurrentSpeakerEmbeddingStorage } from '../speaker-embedding-storage'
 import { ProxyLlmClient, type SessionLanguageSnapshot } from '../proxy-clients'
 import {
@@ -72,8 +74,6 @@ export type ConversationSessionParams = {
   persistSessionLifecycle?: boolean
   /** Full settings snapshot frozen when a persisted session begins. */
   sessionSnapshot?: ConversationSessionSnapshot
-  /** Localized fallback title available before the background review finishes. */
-  sessionTitle?: string
   /** Desktop-only system-audio stream factory; Web leaves this unset. */
   getSystemAudioStream?: () => Promise<MediaStream>
   stopSystemAudioStream?: () => Promise<void>
@@ -243,12 +243,7 @@ export function useConversationSession(params: ConversationSessionParams) {
     if (!resuming) setQuotaExhausted(false)
     let conversationSessionId = `ephemeral-${Date.now()}`
     try {
-      let pendingSessionStart: {
-        id: string
-        startedAt: number
-        snapshot: ConversationSessionSnapshot
-        title: string
-      } | null = null
+      let pendingSessionStart: ConversationSessionStart | null = null
       if (!verifierRef.current) {
         verifierRef.current = new EmbeddingSpeakerVerifier({
           embedAudio: createWorkerEmbedAudio(),
@@ -279,7 +274,7 @@ export function useConversationSession(params: ConversationSessionParams) {
             id: conversationSessionId,
             startedAt,
             snapshot,
-            title: paramsRef.current.sessionTitle ?? '',
+            title: localizedSessionTitle({ startedAt, snapshot }),
           }
         }
       }

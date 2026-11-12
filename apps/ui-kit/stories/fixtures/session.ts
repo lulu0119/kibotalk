@@ -91,7 +91,6 @@ export const fakeActiveSession: ConversationSession = {
   },
   turns: fakeTurns,
   title: '车站问路',
-  reviewStatus: 'pending',
 }
 
 export function createFakeSessionController(options: {

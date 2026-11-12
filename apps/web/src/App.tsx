@@ -9,10 +9,7 @@ import {
   createSessionSnapshot,
   I18nProvider,
   loadLanguagePrefs,
-  localizedSessionFallbackTitle,
   persistLanguagePrefs,
-  reviewConversationSession,
-  resumePendingSessionReviews,
   startModelPreload,
   syncPreferences,
   useAccount,
@@ -53,7 +50,6 @@ function WebProductShell({
   onAccountChange: (account: AccountSession | null) => void
   onDeleteLocalData: () => Promise<void>
 }) {
-  const { language } = useI18n()
   const [view, setView] = useState<ProductView>('session')
   const [enrolled, setEnrolled] = useState(true)
   const [microphonePermission, setMicrophonePermission] =
@@ -62,20 +58,9 @@ function WebProductShell({
   const controller = useProductSession({
     languageSnapshot: snapshot,
     sessionSnapshot: snapshot,
-    sessionTitle: localizedSessionFallbackTitle(Date.now(), snapshot.conversationLang, language),
     storage,
     candidateRoundsMax: 3,
   })
-
-  useEffect(() => {
-    void resumePendingSessionReviews(storage)
-  }, [storage])
-
-  useEffect(() => {
-    const stopped = controller.session.activeSession
-    if (controller.session.lifecycle !== 'stopped' || !stopped || stopped.reviewStatus !== 'pending') return
-    void reviewConversationSession(storage, stopped)
-  }, [controller.session.activeSession, controller.session.lifecycle, storage])
 
   useEffect(() => {
     let cancelled = false
@@ -123,10 +108,6 @@ function WebProductShell({
         storage={storage}
         activeSessionId={controller.session.activeSession?.id}
         onBack={() => setView('session')}
-        onRetryReview={async (sessionId) => {
-          const session = await storage.loadSession(sessionId)
-          if (session) await reviewConversationSession(storage, session)
-        }}
       />
     )
   }

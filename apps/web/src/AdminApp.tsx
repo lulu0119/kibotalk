@@ -281,7 +281,7 @@ export default function AdminApp() {
             <div>
               <h1 className="text-xl font-bold">KiboTalk 管理后台</h1>
               <p className="text-xs text-muted-foreground">
-                仅显示用量与运行元数据，不展示对话、建议、复盘或音频。
+                仅显示用量与运行元数据，不展示对话、建议或音频。
               </p>
             </div>
           </div>

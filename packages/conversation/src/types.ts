@@ -63,11 +63,8 @@ export type ConversationSessionStatus = 'running' | 'paused' | 'stopped'
 
 export type ConversationPauseReason = 'user' | 'unexpected'
 
-export type ConversationReviewStatus = 'pending' | 'ready' | 'failed'
-
 /**
- * Durable session record. Audio is intentionally absent: only text,
- * suggestions, the frozen settings snapshot, and review metadata persist.
+ * Durable session record with text, suggestions and frozen settings.
  */
 export type ConversationSession = {
   id: string
@@ -80,19 +77,9 @@ export type ConversationSession = {
   snapshot: ConversationSessionSnapshot
   turns: ConversationTurn[]
   title: string
-  summary?: string
-  reviewStatus: ConversationReviewStatus
-  reviewError?: string
 }
 
 export type ConversationSessionStart = Pick<
   ConversationSession,
   'id' | 'startedAt' | 'snapshot' | 'title'
 >
-
-export type ConversationReviewUpdate = {
-  title?: string
-  summary?: string
-  reviewStatus: ConversationReviewStatus
-  reviewError?: string
-}

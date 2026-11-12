@@ -12,7 +12,6 @@ import {
 export type ProductSessionParams = {
   languageSnapshot: SessionLanguageSnapshot
   sessionSnapshot?: ConversationSessionSnapshot
-  sessionTitle?: string
   getSystemAudioStream?: () => Promise<MediaStream>
   stopSystemAudioStream?: () => Promise<void>
   /** Defaults to an in-memory session (playground behavior); product apps pass a persisted `ConversationStorage`. */
@@ -31,7 +30,6 @@ export type ProductSessionParams = {
 export function useProductSession({
   languageSnapshot,
   sessionSnapshot,
-  sessionTitle,
   getSystemAudioStream,
   stopSystemAudioStream,
   storage,
@@ -70,7 +68,6 @@ export function useProductSession({
     replyEnabled,
     languageSnapshot,
     sessionSnapshot,
-    sessionTitle,
     getSystemAudioStream,
     stopSystemAudioStream,
     providers,

@@ -9,7 +9,6 @@ import {
   I18nProvider,
   loadLanguagePrefs,
   persistLanguagePrefs,
-  reviewConversationSession,
   syncPreferences,
   useAccount,
   useCloudConversationStorage,
@@ -243,10 +242,6 @@ function DesktopWindowContent({
           embedded
           activeSessionId={activeSessionId}
           onBack={() => void window.kibotalk.onboarding.close()}
-          onRetryReview={async (sessionId) => {
-            const session = await storage.loadSession(sessionId)
-            if (session) await reviewConversationSession(storage, session)
-          }}
         />,
       )
     }

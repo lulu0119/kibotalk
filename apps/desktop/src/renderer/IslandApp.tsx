@@ -8,9 +8,6 @@ import {
   createSessionSnapshot,
   I18nProvider,
   loadLanguagePrefs,
-  localizedSessionFallbackTitle,
-  reviewConversationSession,
-  resumePendingSessionReviews,
   subscribeLanguagePrefs,
   useI18n,
   useAccount,
@@ -44,7 +41,6 @@ function ReadyIsland({
   storage: ConversationStorage
   syncPending: boolean
 }) {
-  const { language } = useI18n()
   const [contentSide, setContentSide] = useState<IslandContentSide>('above')
   const contentSideRef = useRef(contentSide)
   contentSideRef.current = contentSide
@@ -52,7 +48,6 @@ function ReadyIsland({
   const controller = useProductSession({
     languageSnapshot: snapshot,
     sessionSnapshot: snapshot,
-    sessionTitle: localizedSessionFallbackTitle(Date.now(), snapshot.conversationLang, language),
     storage,
     candidateRoundsMax: 3,
     getSystemAudioStream,
@@ -60,10 +55,6 @@ function ReadyIsland({
   })
   const controllerRef = useRef(controller)
   controllerRef.current = controller
-
-  useEffect(() => {
-    void resumePendingSessionReviews(storage)
-  }, [])
 
   useEffect(() => {
     void window.kibotalk.island.getContentSide().then((side) => {
@@ -130,12 +121,6 @@ function ReadyIsland({
     }
     return window.kibotalk.session.onCommand(handleCommand)
   }, [])
-
-  useEffect(() => {
-    const stopped = controller.session.activeSession
-    if (controller.session.lifecycle !== 'stopped' || !stopped || stopped.reviewStatus !== 'pending') return
-    void reviewConversationSession(storage, stopped)
-  }, [controller.session.activeSession, controller.session.lifecycle])
 
   useEffect(() => {
     let ignored = false

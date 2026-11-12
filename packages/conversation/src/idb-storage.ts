@@ -4,7 +4,6 @@ import type {
 } from './storage'
 import type {
   ConversationPauseReason,
-  ConversationReviewUpdate,
   ConversationSession,
   ConversationSessionStart,
   ConversationTurn,
@@ -68,7 +67,6 @@ export class IndexedDbConversationStorage
       status: 'running',
       pausedDurationMs: 0,
       turns: [],
-      reviewStatus: 'pending',
     }
     const tx = await this.transaction([SESSIONS_STORE, META_STORE], 'readwrite')
     tx.objectStore(SESSIONS_STORE).put(session)
@@ -197,14 +195,6 @@ export class IndexedDbConversationStorage
     const activeId = await activeSessionIdFromTransaction(tx)
     if (activeId === sessionId) tx.objectStore(META_STORE).delete(ACTIVE_SESSION_KEY)
     tx.objectStore(SESSIONS_STORE).delete(sessionId)
-    await transactionDone(tx)
-  }
-
-  async updateSessionReview(sessionId: string, update: ConversationReviewUpdate): Promise<void> {
-    const tx = await this.transaction([SESSIONS_STORE], 'readwrite')
-    const store = tx.objectStore(SESSIONS_STORE)
-    const session = await requestToPromise<ConversationSession | undefined>(store.get(sessionId))
-    if (session) store.put({ ...session, ...update })
     await transactionDone(tx)
   }
 

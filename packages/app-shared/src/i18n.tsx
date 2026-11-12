@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
-import type { AppLanguage, LearnerLevel, UiLanguage } from '@kibotalk/conversation'
+import type { AppLanguage, ConversationSession, LearnerLevel, UiLanguage } from '@kibotalk/conversation'
 import {
   loadLanguagePrefs,
   persistLanguagePrefs,
@@ -84,8 +84,6 @@ const messages = {
     lockedWhileActive: '进行中或暂停的会话会锁定会话设置。停止后即可修改。',
     currentSession: '本次会话',
     noHistory: '还没有已保存的会话',
-    summaryPending: '正在整理本次会话…',
-    summaryFailed: '整理失败',
     retry: '重试',
     syncPending: '待同步',
     activeSessionRecovered: '上次会话意外中断，已恢复为暂停状态。',
@@ -121,7 +119,6 @@ const messages = {
     noAudioRecorded: '没有录到音频，请重试',
     voiceprintSavedLocal: '声纹已保存到本机',
     errorPrefix: '错误：',
-    sessionSummary: '会话总结',
     sessionDetails: '会话详情',
     voiceprintRequired: '请先在设置中录入声纹，再开始会话。',
     sessionUnavailable: '语音暂时不可用，请检查权限或音频设置后重试。',
@@ -202,8 +199,6 @@ const messages = {
     lockedWhileActive: '進行中または一時停止中は会話設定を変更できません。停止後に変更できます。',
     currentSession: '今回の会話',
     noHistory: '保存された会話はまだありません',
-    summaryPending: '会話を整理しています…',
-    summaryFailed: '整理に失敗しました',
     retry: '再試行',
     syncPending: '同期待ち',
     activeSessionRecovered: '前回の会話が中断されたため、一時停止状態で復元しました。',
@@ -239,7 +234,6 @@ const messages = {
     noAudioRecorded: '音声を録音できませんでした。もう一度お試しください',
     voiceprintSavedLocal: '声紋をこの端末に保存しました',
     errorPrefix: 'エラー：',
-    sessionSummary: '会話のまとめ',
     sessionDetails: '会話の詳細',
     voiceprintRequired: '会話を始める前に、設定で声紋を登録してください。',
     sessionUnavailable: '音声を利用できません。権限または音声設定を確認して、もう一度お試しください。',
@@ -320,8 +314,6 @@ const messages = {
     lockedWhileActive: 'Conversation settings are locked while running or paused. Stop the session to change them.',
     currentSession: 'Current session',
     noHistory: 'No saved sessions yet',
-    summaryPending: 'Organizing this session…',
-    summaryFailed: 'Could not organize this session',
     retry: 'Retry',
     syncPending: 'Sync pending',
     activeSessionRecovered: 'The previous session was interrupted and restored as paused.',
@@ -357,7 +349,6 @@ const messages = {
     noAudioRecorded: 'No audio was recorded. Please try again',
     voiceprintSavedLocal: 'Voiceprint saved on this device',
     errorPrefix: 'Error:',
-    sessionSummary: 'Session summary',
     sessionDetails: 'Session details',
     voiceprintRequired: 'Enroll your voiceprint in Settings before starting a session.',
     sessionUnavailable: 'Speech is unavailable. Check permissions or audio settings and try again.',
@@ -446,17 +437,16 @@ export function levelLabel(level: LearnerLevel, uiLanguage: UiLanguage): string 
   return messages[uiLanguage][keys[level]]
 }
 
-export function localizedSessionFallbackTitle(
-  startedAt: number,
-  conversationLanguage: AppLanguage,
-  uiLanguage: UiLanguage,
-): string {
-  const locale = uiLanguage === 'zh' ? 'zh-CN' : uiLanguage === 'ja' ? 'ja-JP' : 'en'
+export function localizedSessionTitle({
+  startedAt,
+  snapshot: { conversationLang, uiLang },
+}: Pick<ConversationSession, 'startedAt' | 'snapshot'>): string {
+  const locale = uiLang === 'zh' ? 'zh-CN' : uiLang === 'ja' ? 'ja-JP' : 'en'
   const date = new Intl.DateTimeFormat(locale, {
     month: 'short',
     day: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
   }).format(startedAt)
-  return `${date} · ${languageLabel(conversationLanguage, uiLanguage)}`
+  return `${date} · ${languageLabel(conversationLang, uiLang)}`
 }

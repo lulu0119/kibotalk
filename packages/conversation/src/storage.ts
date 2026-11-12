@@ -1,6 +1,5 @@
 import type {
   ConversationPauseReason,
-  ConversationReviewUpdate,
   ConversationSession,
   ConversationSessionStart,
   ConversationTurn,
@@ -25,7 +24,6 @@ export interface ConversationStorage {
   loadSession(sessionId: string): Promise<ConversationSession | null>
   upsertSession(session: ConversationSession): Promise<void>
   deleteSession(sessionId: string): Promise<void>
-  updateSessionReview(sessionId: string, update: ConversationReviewUpdate): Promise<void>
   clearHistory(): Promise<void>
 }
 

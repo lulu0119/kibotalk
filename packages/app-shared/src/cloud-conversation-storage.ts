@@ -1,6 +1,5 @@
 import type {
   ConversationPauseReason,
-  ConversationReviewUpdate,
   ConversationSession,
   ConversationSessionStart,
   ConversationStorage,
@@ -201,16 +200,6 @@ export class CloudConversationStorage implements ConversationStorage {
     await this.deleteRemoteSession(sessionId)
     await this.local.deleteSession(sessionId)
     await this.clearSessionDirty(sessionId)
-  }
-
-  async updateSessionReview(
-    sessionId: string,
-    update: ConversationReviewUpdate,
-  ): Promise<void> {
-    await this.markSessionDirty(sessionId)
-    await this.local.updateSessionReview(sessionId, update)
-    const session = await this.local.loadSession(sessionId)
-    if (session) this.enqueue(() => this.pushSession(session))
   }
 
   async clearHistory(): Promise<void> {
