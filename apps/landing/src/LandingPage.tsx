@@ -25,9 +25,9 @@ import {
 } from '@kibotalk/ui'
 import { copy, locales, type Locale } from './copy'
 
-const webAppUrl = 'https://app.kibotalk.app'
-const macReleaseUrl = 'https://github.com/KiboAI/KiboTalk/releases/latest'
 const githubRepoUrl = 'https://github.com/KiboAI/KiboTalk'
+const webSetupUrl = `${githubRepoUrl}#web`
+const macSetupUrl = `${githubRepoUrl}#macos`
 const adventurexUrl = 'https://adventure-x.org/'
 const lingguangUrl =
   'https://www.lingguang.com/share/FLASH_APP-47cf7a20-7033-463d-a975-eacb0b0e6c1764'
@@ -104,7 +104,7 @@ function Header({ locale }: { locale: Locale }) {
         <div className="flex items-center gap-2">
           <LanguageMenu locale={locale} />
           <Button asChild size="sm" className="hidden sm:inline-flex">
-            <a href={webAppUrl}>
+            <a href={webSetupUrl}>
               {content.actions.web}
               <ArrowUpRight aria-hidden />
             </a>
@@ -134,7 +134,7 @@ function Hero({ locale }: { locale: Locale }) {
       <div className="hero-actions hero-enter hero-enter-delay-3">
         <div>
           <Button asChild size="lg">
-            <a href={webAppUrl}>
+            <a href={webSetupUrl}>
               {actions.web}
               <ArrowUpRight aria-hidden />
             </a>
@@ -143,7 +143,7 @@ function Hero({ locale }: { locale: Locale }) {
         </div>
         <div>
           <Button asChild variant="soft" size="lg">
-            <a href={macReleaseUrl} target="_blank" rel="noreferrer">
+            <a href={macSetupUrl} target="_blank" rel="noreferrer">
               <ArrowDownToLine aria-hidden />
               {actions.mac}
             </a>
@@ -270,7 +270,7 @@ function StorySection({ locale }: { locale: Locale }) {
                 ))}
               </div>
               <Button asChild>
-                <a href={webAppUrl}>
+                <a href={webSetupUrl}>
                   {actions.web}
                   <ArrowUpRight aria-hidden />
                 </a>
@@ -301,7 +301,7 @@ function MissionSection({ locale }: { locale: Locale }) {
         <div className="mission-actions">
           <div>
             <Button asChild size="lg">
-              <a href={webAppUrl}>
+              <a href={webSetupUrl}>
                 {actions.web}
                 <ArrowUpRight aria-hidden />
               </a>
@@ -309,7 +309,7 @@ function MissionSection({ locale }: { locale: Locale }) {
           </div>
           <div className="desktop-download">
             <Button asChild variant="soft" size="lg">
-              <a href={macReleaseUrl} target="_blank" rel="noreferrer">
+              <a href={macSetupUrl} target="_blank" rel="noreferrer">
                 <ArrowDownToLine aria-hidden />
                 {actions.mac}
               </a>

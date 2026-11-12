@@ -39,6 +39,13 @@
 - 不是 AI 替你说话。
 - 主模式不是「跟 AI 语言老师聊天」—— 主模式是 **真人在场、当场开口**。
 
+## 本机运行
+
+复制 `.env.example` 到仓库根目录的 `.env`，填写转写服务和模型配置。
+运行 `pnpm dev:api` 启动本机代理，再运行 `pnpm dev:web` 或 `pnpm dev:desktop`。
+历史、偏好和声纹留在本机。实时转写和建议使用你配置的服务。
+完整步骤见[本机运行说明](../README.md#run-locally)。
+
 ## 现状
 
 早期 MVP。产品意图与需求见 [规格](./spec/live-reply-coach-mvp.md)。贡献者与编码 Agent 见 [AGENTS.md](../AGENTS.md)。

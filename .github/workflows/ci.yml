@@ -26,5 +26,4 @@ jobs:
       - run: pnpm test
       - run: pnpm --filter @kibotalk/web build
       - run: pnpm --filter @kibotalk/api build
-      - run: docker build --tag kibotalk-api:ci .
 

@@ -5,7 +5,6 @@ import { createProgressAggregator } from './model-progress'
 import {
   useBundledModels,
   useHuggingFaceModels,
-  loadModelWithFallback,
   SPEAKER_MODEL_DTYPE,
   SPEAKER_MODEL_ID,
   SPEAKER_MODEL_REVISION,
@@ -25,11 +24,12 @@ import {
 
 type WorkerScope = DedicatedWorkerGlobalScope
 const ctx: WorkerScope = self as unknown as WorkerScope
+useHuggingFaceModels()
 
 type IncomingMessage =
   | { kind: 'embed'; id: number; pcm: Float32Array }
   | { kind: 'preload' }
-  | { kind: 'configure'; bundled: boolean; fallbackOrigin?: string }
+  | { kind: 'configure'; bundled: boolean }
 
 let processor: Awaited<ReturnType<typeof AutoProcessor.from_pretrained>> | null = null
 let model: Awaited<ReturnType<typeof AutoModel.from_pretrained>> | null = null
@@ -39,7 +39,7 @@ async function ensureLoaded(onProgress?: (fraction: number) => void): Promise<vo
   if (model && processor) return
   if (!loading) {
     const track = onProgress ? createProgressAggregator(onProgress) : undefined
-    loading = loadModelWithFallback(async () => {
+    loading = (async () => {
       processor = await AutoProcessor.from_pretrained(SPEAKER_MODEL_ID, {
         revision: SPEAKER_MODEL_REVISION,
         progress_callback: track,
@@ -49,7 +49,7 @@ async function ensureLoaded(onProgress?: (fraction: number) => void): Promise<vo
         revision: SPEAKER_MODEL_REVISION,
         progress_callback: track,
       })
-    })
+    })()
   }
   return loading
 }
@@ -59,7 +59,7 @@ ctx.onmessage = async (event: MessageEvent<IncomingMessage>) => {
 
   if (data.kind === 'configure') {
     if (data.bundled) useBundledModels()
-    else useHuggingFaceModels(data.fallbackOrigin)
+    else useHuggingFaceModels()
     return
   }
 

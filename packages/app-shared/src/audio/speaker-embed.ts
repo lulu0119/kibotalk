@@ -11,7 +11,7 @@ import type { EmbedAudio } from '@kibotalk/speaker'
  * spinning up (and re-downloading into) their own.
  */
 
-type ModelSourceConfig = { bundled: boolean; fallbackOrigin?: string }
+type ModelSourceConfig = { bundled: boolean }
 type OutgoingMessage =
   | { kind: 'embed'; id: number; pcm: Float32Array }
   | { kind: 'preload' }

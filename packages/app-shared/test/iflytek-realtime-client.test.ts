@@ -3,10 +3,10 @@ import {
   connectIflytekRealtimeStt,
   parseIflytekServerEvent,
 } from '../src/iflytek-realtime-client'
-import { authorizedFetch } from '../src/api-runtime'
+import { apiFetch } from '../src/api-runtime'
 
 vi.mock('../src/api-runtime', () => ({
-  authorizedFetch: vi.fn(),
+  apiFetch: vi.fn(),
 }))
 
 class MockWebSocket {
@@ -47,7 +47,7 @@ beforeEach(() => {
   MockWebSocket.instances = []
   vi.useFakeTimers()
   vi.stubGlobal('WebSocket', MockWebSocket)
-  vi.mocked(authorizedFetch).mockReset()
+  vi.mocked(apiFetch).mockReset()
 })
 
 afterEach(() => {
@@ -107,23 +107,9 @@ describe('iFlytek realtime browser protocol', () => {
   })
 
   it('streams PCM from the browser directly to the signed provider URL', async () => {
-    vi.mocked(authorizedFetch).mockImplementation(async (path) => {
-      if (path === '/api/stt/direct/complete') {
-        return new Response(JSON.stringify({ ok: true, exhausted: false }), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        })
-      }
-      return new Response(JSON.stringify({
-        requestId: 'request-1',
-        url: 'wss://office-api-ast-dx.iflyaisol.com/ast/communicate/v1?signed=1',
-        frameBytes: 1_280,
-        frameIntervalMs: 40,
-      }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      })
-    })
+    vi.mocked(apiFetch).mockResolvedValue(Response.json({
+      url: 'wss://office-api-ast-dx.iflyaisol.com/ast/communicate/v1?signed=1',
+    }))
     const connecting = connectIflytekRealtimeStt({ language: 'ja' })
     await vi.waitFor(() => expect(MockWebSocket.instances).toHaveLength(1))
     const providerSocket = MockWebSocket.instances[0]!
@@ -164,17 +150,7 @@ describe('iFlytek realtime browser protocol', () => {
     await expect(completed).resolves.toBe('直连成功')
     expect(MockWebSocket.instances).toHaveLength(1)
 
-    const completionCall = vi.mocked(authorizedFetch).mock.calls.find(
-      ([path]) => path === '/api/stt/direct/complete',
-    )
-    expect(completionCall).toBeDefined()
-    expect(JSON.parse(String(completionCall?.[1]?.body))).toMatchObject({
-      requestId: 'request-1',
-      samples: 512,
-    })
-    expect(
-      vi.mocked(authorizedFetch).mock.calls.some(([path]) =>
-        String(path).includes('/api/stt/direct/session')),
-    ).toBe(true)
+    expect(apiFetch).toHaveBeenCalledTimes(1)
+    expect(apiFetch).toHaveBeenCalledWith('/api/stt/direct/session?language=ja', { method: 'POST' })
   })
 })

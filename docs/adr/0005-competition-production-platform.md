@@ -1,5 +1,7 @@
 # 比赛生产平台：单 VPS、账号、加密同步与额度账本
 
+> **已退役。** 此文保留比赛部署的历史。当前使用[本机代理](../../README.md#run-locally)。
+
 - **状态**：Accepted
 - **日期**：2026-07-25
 - **覆盖**：ADR 0001 中 Railway / Supabase / 无账号的部署假设；ADR 0004 中 realtime-only STT

@@ -1,6 +1,5 @@
 import { AutoModel, Tensor } from '@huggingface/transformers'
 import type { VadInfer } from '@kibotalk/audio/vad'
-import { loadModelWithFallback } from './model-source'
 import { createProgressAggregator } from './model-progress'
 
 /**
@@ -56,14 +55,12 @@ function loadSileroModel(
   const existing = modelPromises.get(key)
   if (existing) return existing
 
-  const loading = loadModelWithFallback(() =>
-    AutoModel.from_pretrained(variant.modelId, {
-      config: { model_type: 'custom' },
-      dtype: 'q8',
-      revision: variant.revision,
-      progress_callback: onProgress ? createProgressAggregator(onProgress) : undefined,
-    } as Record<string, unknown>),
-  ) as Promise<unknown> as Promise<SileroForward>
+  const loading = AutoModel.from_pretrained(variant.modelId, {
+    config: { model_type: 'custom' },
+    dtype: 'q8',
+    revision: variant.revision,
+    progress_callback: onProgress ? createProgressAggregator(onProgress) : undefined,
+  } as Record<string, unknown>) as Promise<unknown> as Promise<SileroForward>
   modelPromises.set(key, loading)
   void loading.catch(() => {
     if (modelPromises.get(key) === loading) modelPromises.delete(key)

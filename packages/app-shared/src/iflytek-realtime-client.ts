@@ -1,4 +1,4 @@
-import { authorizedFetch } from './api-runtime'
+import { apiFetch } from './api-runtime'
 import {
   RealtimeSttError,
   type RealtimeSttClient,
@@ -8,13 +8,6 @@ import {
 const FRAME_BYTES = 1_280
 const FRAME_INTERVAL_MS = 40
 const KEEPALIVE_INTERVAL_MS = 10_000
-
-type DirectSession = {
-  requestId: string
-  url: string
-  frameBytes: number
-  frameIntervalMs: number
-}
 
 type IflytekResultData = {
   seg_id?: number
@@ -122,67 +115,24 @@ function floatToPcm16Bytes(pcm: Float32Array): Uint8Array {
   return bytes
 }
 
-async function requestDirectSession(
-  language?: string,
-  conversationSessionId?: string,
-): Promise<DirectSession> {
+async function requestSignedUrl(language?: string): Promise<string> {
   const params = new URLSearchParams()
   if (language) params.set('language', language)
-  if (conversationSessionId) params.set('sessionId', conversationSessionId)
   const query = params.toString()
   const path = query ? `/api/stt/direct/session?${query}` : '/api/stt/direct/session'
-  const response = await authorizedFetch(path, { method: 'POST' })
-  const body = (await response.json().catch(() => ({}))) as Partial<DirectSession> & {
+  const response = await apiFetch(path, { method: 'POST' })
+  const body = await response.json().catch(() => ({})) as {
+    url?: unknown
     error?: string
     message?: string
   }
-  if (
-    !response.ok
-    || typeof body.requestId !== 'string'
-    || typeof body.url !== 'string'
-  ) {
+  if (!response.ok || typeof body.url !== 'string') {
     throw new RealtimeSttError(
       body.message ?? body.error ?? `Direct STT session HTTP ${response.status}`,
       body.error,
     )
   }
-  return {
-    requestId: body.requestId,
-    url: body.url,
-    frameBytes: body.frameBytes ?? FRAME_BYTES,
-    frameIntervalMs: body.frameIntervalMs ?? FRAME_INTERVAL_MS,
-  }
-}
-
-async function reportDirectCompletion(
-  requestId: string,
-  samples: number,
-  durationMs: number,
-): Promise<{ exhausted: boolean }> {
-  const response = await authorizedFetch('/api/stt/direct/complete', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ requestId, samples, durationMs }),
-  })
-  const body = (await response.json().catch(() => ({}))) as {
-    exhausted?: boolean
-    error?: string
-  }
-  if (!response.ok) {
-    throw new RealtimeSttError(
-      body.error ?? `Direct STT completion HTTP ${response.status}`,
-      body.error,
-    )
-  }
-  return { exhausted: body.exhausted === true }
-}
-
-async function cancelDirectSession(requestId: string): Promise<void> {
-  await authorizedFetch('/api/stt/direct/cancel', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ requestId }),
-  }).catch(() => undefined)
+  return body.url
 }
 
 type Deferred<T> = {
@@ -212,7 +162,6 @@ type IflytekTurn = {
 function createIflytekTurn(options: {
   previous: Promise<unknown>
   language?: string
-  conversationSessionId?: string
   handlers: RealtimeSttHandlers
   eager: boolean
 }): IflytekTurn {
@@ -222,18 +171,13 @@ function createIflytekTurn(options: {
   const finalSegments = new Map<number, string>()
   let websocket: WebSocket | null = null
   let sessionId = ''
-  let requestId = ''
   let queuedBytes = 0
-  let frameBytes = FRAME_BYTES
-  let frameIntervalMs = FRAME_INTERVAL_MS
   let sendTimer: ReturnType<typeof setTimeout> | null = null
   let keepaliveTimer: ReturnType<typeof setInterval> | null = null
   let ready = false
   let openStarted = false
   let ending = false
   let settled = false
-  let samples = 0
-  let startedAt = Date.now()
 
   function clearTimers(): void {
     if (sendTimer) clearTimeout(sendTimer)
@@ -248,30 +192,17 @@ function createIflytekTurn(options: {
     clearTimers()
     websocket?.close()
     const error = cause instanceof Error ? cause : new Error(String(cause))
-    if (requestId) void cancelDirectSession(requestId)
     if (!ready) readyDeferred.reject(error)
     completionDeferred.reject(error)
   }
 
-  async function complete(text: string): Promise<void> {
+  function complete(text: string): void {
     if (settled) return
     settled = true
     clearTimers()
     websocket?.close()
-    try {
-      const usage = await reportDirectCompletion(
-        requestId,
-        samples,
-        Date.now() - startedAt,
-      )
-      options.handlers.onCompleted?.(text)
-      if (usage.exhausted) options.handlers.onQuotaExhausted?.()
-      completionDeferred.resolve(text)
-    } catch (cause) {
-      completionDeferred.reject(
-        cause instanceof Error ? cause : new Error(String(cause)),
-      )
-    }
+    options.handlers.onCompleted?.(text)
+    completionDeferred.resolve(text)
   }
 
   function scheduleSend(delayMs: number): void {
@@ -300,12 +231,12 @@ function createIflytekTurn(options: {
   function sendNextFrame(): void {
     if (!ready || !websocket || websocket.readyState !== WebSocket.OPEN) return
     let targetBytes = 0
-    if (queuedBytes >= frameBytes) targetBytes = frameBytes
+    if (queuedBytes >= FRAME_BYTES) targetBytes = FRAME_BYTES
     else if (ending) targetBytes = queuedBytes
 
     if (targetBytes > 0) {
       websocket.send(takeQueuedFrame(targetBytes))
-      scheduleSend(frameIntervalMs)
+      scheduleSend(FRAME_INTERVAL_MS)
       return
     }
     if (!ending) return
@@ -329,7 +260,7 @@ function createIflytekTurn(options: {
             && ready
             && websocket?.readyState === WebSocket.OPEN
             && queuedBytes === 0
-          ) websocket.send(new Uint8Array(frameBytes))
+          ) websocket.send(new Uint8Array(FRAME_BYTES))
         }, KEEPALIVE_INTERVAL_MS)
         scheduleSend(0)
         break
@@ -340,7 +271,7 @@ function createIflytekTurn(options: {
           .map(([, text]) => text)
           .join('')
         options.handlers.onPartial?.(event.final ? stable : `${stable}${event.text}`)
-        if (event.last) void complete(stable || event.text)
+        if (event.last) complete(stable || event.text)
         break
       }
       case 'error':
@@ -357,27 +288,18 @@ function createIflytekTurn(options: {
 
   async function open(): Promise<void> {
     if (settled) return
-    let directSession: DirectSession
     try {
-      directSession = await requestDirectSession(
-        options.language,
-        options.conversationSessionId,
-      )
+      const url = await requestSignedUrl(options.language)
+      if (settled) return
+      websocket = new WebSocket(url)
+      websocket.binaryType = 'arraybuffer'
+      websocket.onmessage = handleProviderMessage
+      websocket.onerror = () => fail(new RealtimeSttError('讯飞 WebSocket 连接失败'))
+      websocket.onclose = () => {
+        if (!settled) fail(new RealtimeSttError('讯飞 WebSocket 提前关闭'))
+      }
     } catch (cause) {
       fail(cause)
-      return
-    }
-    if (settled) return
-    requestId = directSession.requestId
-    frameBytes = directSession.frameBytes
-    frameIntervalMs = directSession.frameIntervalMs
-    startedAt = Date.now()
-    websocket = new WebSocket(directSession.url)
-    websocket.binaryType = 'arraybuffer'
-    websocket.onmessage = handleProviderMessage
-    websocket.onerror = () => fail(new RealtimeSttError('讯飞 WebSocket 连接失败'))
-    websocket.onclose = () => {
-      if (!settled) fail(new RealtimeSttError('讯飞 WebSocket 提前关闭'))
     }
   }
 
@@ -391,7 +313,6 @@ function createIflytekTurn(options: {
     if (ending || settled) return
     startOpen()
     const bytes = floatToPcm16Bytes(pcm)
-    samples += pcm.length
     chunks.push(bytes)
     queuedBytes += bytes.byteLength
     scheduleSend(0)
@@ -409,7 +330,6 @@ function createIflytekTurn(options: {
     settled = true
     clearTimers()
     websocket?.close()
-    if (requestId) void cancelDirectSession(requestId)
     const error = new RealtimeSttError('WebSocket closed')
     if (!ready) readyDeferred.reject(error)
     completionDeferred.reject(error)
@@ -443,7 +363,6 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
 
 export function connectIflytekRealtimeStt(options: {
   language?: string
-  sessionId?: string
   handlers?: RealtimeSttHandlers
 }): Promise<RealtimeSttClient> {
   const handlers = options.handlers ?? {}
@@ -458,7 +377,6 @@ export function connectIflytekRealtimeStt(options: {
     const turn = createIflytekTurn({
       previous,
       language: options.language,
-      conversationSessionId: options.sessionId,
       handlers,
       eager: isFirstTurn,
     })

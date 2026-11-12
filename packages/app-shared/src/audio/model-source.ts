@@ -5,8 +5,6 @@ export {
   SPEAKER_MODEL_ID,
   SPEAKER_MODEL_REVISION,
 } from './speaker-model-contract'
-let fallbackOrigin: string | undefined
-let activeSource: 'bundled' | 'huggingface' | 'vps' = 'huggingface'
 
 /**
  * Scheme `apps/desktop` registers in its main process (see
@@ -28,52 +26,17 @@ export const BUNDLED_MODELS_HOST = 'kibotalk-model://app/'
  * WeSpeaker model selected by the held-out target/non-target benchmark.
  */
 export function useBundledModels(): void {
-  fallbackOrigin = undefined
-  activeSource = 'bundled'
   env.allowRemoteModels = true
   env.remoteHost = BUNDLED_MODELS_HOST
   env.remotePathTemplate = '{model}/'
   env.useBrowserCache = false
 }
 
-function useVpsModels(origin: string): void {
-  activeSource = 'vps'
-  env.allowLocalModels = false
-  env.allowRemoteModels = true
-  env.remoteHost = `${origin.replace(/\/$/, '')}/models/`
-  env.remotePathTemplate = '{model}/'
-  env.useBrowserCache = true
-}
-
-/**
- * Uses immutable Hugging Face revisions first. Web callers provide their
- * production origin so a failed Hub load can retry against the VPS mirror.
- */
-export function useHuggingFaceModels(vpsFallbackOrigin?: string): void {
-  fallbackOrigin = vpsFallbackOrigin
-  activeSource = 'huggingface'
+/** Uses revision-pinned assets from Hugging Face with the browser cache. */
+export function useHuggingFaceModels(): void {
   env.allowLocalModels = false
   env.allowRemoteModels = true
   env.remoteHost = 'https://huggingface.co/'
   env.remotePathTemplate = '{model}/resolve/{revision}/'
   env.useBrowserCache = true
-}
-
-/** Retries one failed Hugging Face model load against the same-origin VPS mirror. */
-export async function loadModelWithFallback<T>(load: () => Promise<T>): Promise<T> {
-  const startedOnHuggingFace = activeSource === 'huggingface'
-  try {
-    return await load()
-  } catch (huggingFaceError) {
-    if (!startedOnHuggingFace || !fallbackOrigin) throw huggingFaceError
-    useVpsModels(fallbackOrigin)
-    try {
-      return await load()
-    } catch (vpsError) {
-      throw new AggregateError(
-        [huggingFaceError, vpsError],
-        'Model loading failed from Hugging Face and the VPS mirror',
-      )
-    }
-  }
 }

@@ -82,8 +82,8 @@ export const copy: Record<Locale, LandingCopy> = {
       mission: '我们的使命',
     },
     actions: {
-      web: '立即体验 Web 版',
-      mac: '下载 macOS 版',
+      web: 'Web 版运行说明',
+      mac: 'macOS 版安装说明',
       top: '回到顶部',
     },
     hero: {
@@ -93,7 +93,7 @@ export const copy: Record<Locale, LandingCopy> = {
       statementLead: '翻译让你听懂，',
       statementStrong: 'KiboTalk 让你答得上来。',
       tagline: 'AI 提示，你开口。',
-      webNote: '浏览器直接使用 · 支持 PWA',
+      webNote: '在本机浏览器运行',
       macNote: 'Apple Silicon · macOS 13+',
     },
     scenes: {
@@ -133,11 +133,11 @@ export const copy: Record<Locale, LandingCopy> = {
     story: {
       eyebrow: 'FROM VALIDATION TO PRODUCTION',
       title: '把现场能说出口的下一句，做成真正可用的产品。',
-      body: '人们缺的往往不是翻译，而是对话现场能说出口的下一句。我们从端侧音频判断做到多端会话同步，把这个判断做成可以长期使用的产品。',
+      body: '人们缺的往往不是翻译，而是对话现场能说出口的下一句。KiboTalk 会在对话进行时给出可以直接开口的建议。',
       productionLabel: '现在的产品',
       productionTitle: 'KiboTalk 自研栈',
-      productionBody: '从端侧音频判断到多端会话同步，把一次灵感变成可以长期使用的产品。',
-      capabilities: ['端侧语音活动检测', '声纹验证', '实时转写', '加密会话同步', '账号与额度', 'Web / PWA / 桌面端'],
+      productionBody: '会话历史保存在本机，实时转写和回复由你配置的服务提供。',
+      capabilities: ['端侧语音活动检测', '声纹验证', '实时转写', '本机历史', 'Web / PWA / 桌面端'],
     },
     mission: {
       eyebrow: 'READY FOR THE REAL CONVERSATION',
@@ -163,8 +163,8 @@ export const copy: Record<Locale, LandingCopy> = {
       mission: '私たちの使命',
     },
     actions: {
-      web: 'Web版を試す',
-      mac: 'macOS版をダウンロード',
+      web: 'Web版の起動手順',
+      mac: 'macOS版のセットアップ',
       top: 'ページ上部へ',
     },
     hero: {
@@ -174,7 +174,7 @@ export const copy: Record<Locale, LandingCopy> = {
       statementLead: '翻訳は理解を助ける。',
       statementStrong: 'KiboTalkは返事を助ける。',
       tagline: 'AIがヒントを。話すのは、あなた。',
-      webNote: 'ブラウザですぐ使える · PWA対応',
+      webNote: 'ローカルのブラウザで動作',
       macNote: 'Apple Silicon · macOS 13以降',
     },
     scenes: {
@@ -214,11 +214,11 @@ export const copy: Record<Locale, LandingCopy> = {
     story: {
       eyebrow: 'FROM VALIDATION TO PRODUCTION',
       title: '会話の現場で口にできる次の一言を、長く使えるプロダクトへ。',
-      body: '必要なのは翻訳だけではなく、会話の現場で口にできる「次の一言」。端末上の音声処理からマルチデバイス同期まで、その判断を長く使えるプロダクトにしています。',
+      body: '必要なのは翻訳だけではなく、会話の現場で口にできる「次の一言」。KiboTalkは会話中に、その場で言える返事を提案します。',
       productionLabel: '現在のプロダクト',
       productionTitle: 'KiboTalk 自社開発スタック',
-      productionBody: '端末上の音声処理からマルチデバイス同期まで、ひらめきを長く使えるプロダクトへ。',
-      capabilities: ['端末上の音声区間検出', '話者照合', 'リアルタイム文字起こし', '暗号化された会話同期', 'アカウントと利用枠', 'Web / PWA / デスクトップ'],
+      productionBody: '履歴は端末に保存され、文字起こしと返事の提案には設定したサービスを使います。',
+      capabilities: ['端末上の音声区間検出', '話者照合', 'リアルタイム文字起こし', '端末内の履歴', 'Web / PWA / デスクトップ'],
     },
     mission: {
       eyebrow: 'READY FOR THE REAL CONVERSATION',
@@ -244,8 +244,8 @@ export const copy: Record<Locale, LandingCopy> = {
       mission: 'Our mission',
     },
     actions: {
-      web: 'Try the Web app',
-      mac: 'Download for macOS',
+      web: 'Set up the Web app',
+      mac: 'Set up on macOS',
       top: 'Back to top',
     },
     hero: {
@@ -255,7 +255,7 @@ export const copy: Record<Locale, LandingCopy> = {
       statementLead: 'Translation helps you understand. ',
       statementStrong: 'KiboTalk helps you answer.',
       tagline: 'AI gives the cue. You speak.',
-      webNote: 'Runs in your browser · PWA ready',
+      webNote: 'Runs locally in your browser',
       macNote: 'Apple Silicon · macOS 13+',
     },
     scenes: {
@@ -295,11 +295,11 @@ export const copy: Record<Locale, LandingCopy> = {
     story: {
       eyebrow: 'FROM VALIDATION TO PRODUCTION',
       title: 'The next sentence you can actually say, built for real life.',
-      body: 'People often need more than translation—they need the next sentence they can actually say. From on-device audio decisions to cross-device conversation sync, we turned that into a product people can rely on.',
+      body: 'KiboTalk suggests lines you can say while the conversation is still happening.',
       productionLabel: 'The product today',
       productionTitle: 'The KiboTalk stack',
-      productionBody: 'From on-device audio decisions to cross-device conversation sync, we are turning the spark into a product people can rely on.',
-      capabilities: ['On-device voice activity detection', 'Speaker verification', 'Live transcription', 'Encrypted conversation sync', 'Accounts and usage allowance', 'Web / PWA / desktop'],
+      productionBody: 'History stays on your device. Choose the providers for transcription and reply suggestions.',
+      capabilities: ['On-device voice activity detection', 'Speaker verification', 'Live transcription', 'On-device history', 'Web / PWA / desktop'],
     },
     mission: {
       eyebrow: 'READY FOR THE REAL CONVERSATION',

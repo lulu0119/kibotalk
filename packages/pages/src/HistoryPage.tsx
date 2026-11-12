@@ -22,7 +22,6 @@ export type HistoryPageProps = {
   embedded?: boolean
   activeSessionId?: string
   onBack: () => void
-  readOnly?: boolean
 }
 
 function sessionSubtitle(session: ConversationSession, currentLabel: string): string {
@@ -71,12 +70,11 @@ export function HistoryPage({
   embedded = false,
   activeSessionId,
   onBack,
-  readOnly = false,
 }: HistoryPageProps) {
   const { t } = useI18n()
   const [sessions, setSessions] = useState<ConversationSession[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [deleteOpen, setDeleteOpen] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<'session' | 'history' | null>(null)
 
   const refresh = useCallback(async () => {
     const next = await storage.listSessions()
@@ -110,6 +108,11 @@ export function HistoryPage({
               <ArrowLeft className="size-4" />
             </Button>
             <h1 className="text-base font-bold">{t('history')}</h1>
+            {sessions.some((session) => session.status === 'stopped') ? (
+              <Button variant="ghost" size="sm" className="ml-auto" onClick={() => setDeleteTarget('history')}>
+                {t('clearHistory')}
+              </Button>
+            ) : null}
           </div>
           <ScrollArea className="min-h-0 flex-1 p-2">
             {sessions.length === 0 ? (
@@ -150,12 +153,12 @@ export function HistoryPage({
                     {sessionSubtitle(selected, t('currentSession'))}
                   </p>
                 </div>
-                {!readOnly && selected.status === 'stopped' && selected.id !== activeSessionId ? (
+                {selected.status === 'stopped' && selected.id !== activeSessionId ? (
                   <Button
                     variant="soft"
                     size="icon"
-                    aria-label="删除本次会话"
-                    onClick={() => setDeleteOpen(true)}
+                    aria-label={t('deleteSession')}
+                    onClick={() => setDeleteTarget('session')}
                   >
                     <Trash2 className="size-4" />
                   </Button>
@@ -175,12 +178,12 @@ export function HistoryPage({
           )}
         </main>
       </div>
-      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+      <Dialog open={deleteTarget !== null} onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>删除本次会话？</DialogTitle>
+            <DialogTitle>{t(deleteTarget === 'history' ? 'clearHistory' : 'deleteSession')}</DialogTitle>
             <DialogDescription>
-              这会从所有已登录设备和云端永久删除本次转写和回复建议。
+              {t(deleteTarget === 'history' ? 'clearHistoryDescription' : 'deleteSessionDescription')}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -190,9 +193,10 @@ export function HistoryPage({
             <Button
               variant="destructive"
               onClick={async () => {
-                if (!selected) return
-                await storage.deleteSession(selected.id)
-                setDeleteOpen(false)
+                if (deleteTarget === 'history') await storage.clearHistory()
+                else if (deleteTarget === 'session' && selected) await storage.deleteSession(selected.id)
+                else return
+                setDeleteTarget(null)
                 setSelectedId(null)
                 await refresh()
               }}

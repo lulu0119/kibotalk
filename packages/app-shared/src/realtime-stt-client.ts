@@ -1,8 +1,7 @@
 /**
- * Browser client for thin-protocol realtime STT (WS /stt-realtime).
+ * Browser client for thin-protocol realtime STT (WS /api/stt-realtime).
  * Speaks only the thin JSON protocol — never DashScope upstream events.
  */
-import type { QuotaSummary } from './account'
 import { connectIflytekRealtimeStt } from './iflytek-realtime-client'
 import { websocketApiUrl } from './api-runtime'
 import {
@@ -41,26 +40,23 @@ const APPEND_MAX_SAMPLES = 1600
 async function sttRealtimeUrl(
   provider: string,
   language?: string,
-  sessionId?: string,
 ): Promise<string> {
   const params = new URLSearchParams({ provider })
   if (language) params.set('language', language)
-  if (sessionId) params.set('sessionId', sessionId)
   return websocketApiUrl('/api/stt-realtime', params)
 }
 
 export function connectRealtimeStt(opts: {
   provider: string
   language?: string
-  sessionId?: string
   handlers?: RealtimeSttHandlers
 }): Promise<RealtimeSttClient> {
-  const { provider, language, sessionId, handlers = {} } = opts
+  const { provider, language, handlers = {} } = opts
   if (provider === 'iflytek-realtime') {
-    return connectIflytekRealtimeStt({ language, sessionId, handlers })
+    return connectIflytekRealtimeStt({ language, handlers })
   }
 
-  return sttRealtimeUrl(provider, language, sessionId).then((url) => new Promise((resolve, reject) => {
+  return sttRealtimeUrl(provider, language).then((url) => new Promise((resolve, reject) => {
     const ws = new WebSocket(url)
     let settled = false
     let completedWaiters: Array<{
@@ -88,7 +84,6 @@ export function connectRealtimeStt(opts: {
         text?: string
         message?: string
         code?: string
-        quota?: QuotaSummary
       }
       try {
         data = JSON.parse(String(ev.data)) as typeof data
@@ -130,9 +125,6 @@ export function connectRealtimeStt(opts: {
           }
           break
         }
-        case 'quota_exhausted':
-          handlers.onQuotaExhausted?.(data.quota)
-          break
         default:
           break
       }
@@ -212,7 +204,6 @@ export function connectRealtimeStt(opts: {
 export async function connectRealtimeSttWithRetry(opts: {
   provider: string
   language?: string
-  sessionId?: string
   handlers?: RealtimeSttHandlers
   attempts?: number
 }): Promise<RealtimeSttClient> {

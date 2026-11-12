@@ -8,8 +8,3 @@ export {
   type SettingsPageProps,
 } from './SettingsPage'
 export { HistoryPage, type HistoryPageProps } from './HistoryPage'
-export { AccountPage, type AccountPageProps } from './AccountPage'
-export {
-  SyncPendingNotice,
-  type SyncPendingNoticeProps,
-} from './SyncPendingNotice'

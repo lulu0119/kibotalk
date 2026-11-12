@@ -61,7 +61,7 @@ describe('realtime STT completion queue', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async () =>
-        new Response(JSON.stringify({ ticket: 'test-ticket' }), {
+        new Response(JSON.stringify({ token: 'test-token' }), {
           status: 200,
           headers: { 'content-type': 'application/json' },
         }),

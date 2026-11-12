@@ -28,32 +28,15 @@ update the spec — don't silently drift.
 
 ## Architecture
 
-Client orchestration + thin proxy (ADR 0001). The browser runs the pipeline;
-`apps/api` is a stateless Hono proxy that hides provider keys and forwards STT/LLM.
+Client orchestration with a local Hono proxy. Run `apps/api` on loopback
+using the credentials in the root `.env`. Web, macOS, and Playground use the
+same local proxy. Session history and voiceprints stay in IndexedDB on the
+device. See [local setup](README.md#run-locally) for the supported entry points.
 
-**STT** (ADR 0004): **realtime only** via `WS /stt-realtime` (DashScope
-`qwen3-asr-flash-realtime`). Local VAD + speaker verification own turn
-boundaries (`pauseMs`); upstream uses Manual commit (no server VAD). Timeline
-may show partial drafts; formal turns + LLM fire only on finalized transcript.
-
-```
-apps/
-  api/        Hono proxy: /stt-realtime (WS), /llm (SSE). Keys server-side only.
-  playground/ Vite + React dev panel (Chinese UI) for testing each layer
-              (声纹页 covers enrollment + free-speech verify / threshold tuning).
-  web/        PWA shell (not yet built).
-packages/
-  audio/      VAD state machine + encodeWav. Silero via transformers.js.
-  llm/        LLM client (xsai).
-  prompts/    Reply-suggestion prompts (Velin TSX → markdown).
-  speaker/    Speaker verification (wespeaker-voxceleb-resnet34-LM Q8, WASM + IndexedDB);
-              `verify` returns raw `similarity` plus label `confidence`.
-  stt/        DashScope realtime mapper helpers (server-side); `apps/api` relays
-              `WS /stt-realtime` only.
-  pipeline/   Conversation store + turn state machine.
-  ui/         shadcn/ui primitives on Tailwind v4 (shared).
-  app-shared/ Shared client types/config shell.
-```
+Realtime STT supports iFlytek via a signed URL and DashScope via
+`WS /api/stt-realtime`. Local VAD and speaker verification own turn boundaries.
+The timeline may show partial drafts. Formal turns and LLM requests use
+finalized transcripts.
 
 ## Tech stack — do not bypass these
 
@@ -61,7 +44,7 @@ These are spec-named choices. **Do not rewrite or substitute them** with hand-ro
 
 - **LLM → `xsai`** (`@xsai/stream-text`). Never hand-roll fetch/SSE for LLM. An official `xsai` skill is installed at `.agents/skills/xsai/` — read its `SKILL.md` + `references/` before touching `packages/llm`.
 - **Prompts → Velin** (`@velin-dev/core-react`). Render TSX components to markdown strings; don't template with raw string concat.
-- **STT → DashScope realtime** via `packages/stt` mapper helpers, reached through the `apps/api` `WS /stt-realtime` relay. **Never browser-direct** to upstream (ADR 0004).
+- **STT** uses the `packages/stt` mappers for DashScope and a local proxy-issued URL for iFlytek. Keep provider secrets in the local proxy.
 - **VAD → Silero** via `@huggingface/transformers`. v6.2 needs a 64-sample context prepended to each 512-sample chunk (576 input), carried across calls; v5 takes 512 raw. See `apps/playground/src/audio/silero-vad.ts`.
 - **Speaker → `onnx-community/wespeaker-voxceleb-resnet34-LM` (Q8)** via transformers.js in a Web Worker; embeddings persist in IndexedDB.
 - **Python deps → `uv`**: repo-local `.venv` (gitignored); install with `uv pip install -r <path>/requirements.txt`, never bare `pip`. Keep helper scripts in the repo so GitHub workflows can run them; invoke with `.venv/bin/python`.

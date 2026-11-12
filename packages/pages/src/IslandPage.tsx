@@ -36,17 +36,14 @@ import {
   Settings,
   Sparkles,
   Square,
-  UserRound,
 } from 'lucide-react'
 import { IslandShell } from './IslandShell'
 
 export type IslandPageProps = {
   controller: ProductSessionController
   contentSide: 'above' | 'below'
-  syncPending?: boolean
   onGoSettings?: () => void
   onGoHistory?: () => void
-  onGoAccount?: () => void
   onHide?: () => void
   onQuit?: () => void
 }
@@ -87,10 +84,8 @@ function islandStatus(controller: ProductSessionController, translate: ReturnTyp
 export function IslandPage({
   controller,
   contentSide,
-  syncPending = false,
   onGoSettings,
   onGoHistory,
-  onGoAccount,
   onHide,
   onQuit,
 }: IslandPageProps) {
@@ -105,8 +100,14 @@ export function IslandPage({
   const transcript = session.draft ?? latestTurn
   const showSuggestions = rounds.length > 0 || session.state === 'LLM_STREAMING'
 
-  const content = transcript || showSuggestions ? (
+  const localSttUnavailable = session.error === 'LOCAL_STT_UNAVAILABLE'
+  const content = localSttUnavailable || transcript || showSuggestions ? (
     <div className="desktop-float-content desktop-interactive flex min-h-0 w-full flex-1 flex-col gap-2.5">
+      {localSttUnavailable ? (
+        <div role="alert" className="glass-chip shrink-0 px-3.5 py-2 text-xs">
+          {t('localSttUnavailable')}
+        </div>
+      ) : null}
       {transcript ? (
         <div className="glass-chip shrink-0 px-3.5 py-2 text-xs" aria-live="polite">
           <strong className="mr-2 text-[10px] text-island-foreground/50">
@@ -137,11 +138,6 @@ export function IslandPage({
         pulse={tone.pulse}
         toneClassName={tone.toneClassName}
       />
-      {syncPending ? (
-        <span className="px-1 text-[10px] font-semibold text-island-foreground/55">
-          {t('syncPending')}
-        </span>
-      ) : null}
       <IslandSeparator />
       {session.lifecycle === 'running' ? (
         <IslandToggleButton on label={t('pause')} onClick={() => void session.pause()}>
@@ -208,12 +204,6 @@ export function IslandPage({
             <DropdownMenuItem onSelect={onGoSettings}>
               <Settings className="size-4" />
               {t('settings')}
-            </DropdownMenuItem>
-          ) : null}
-          {onGoAccount ? (
-            <DropdownMenuItem onSelect={onGoAccount}>
-              <UserRound className="size-4" />
-              账户与额度
             </DropdownMenuItem>
           ) : null}
           {onHide ? (

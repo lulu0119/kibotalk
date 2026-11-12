@@ -217,9 +217,6 @@ export default function LiveSession({
       const cfg = useConfig.getState()
       const selectedProvider = cfg.transcribeProvider
       if (!selectedProvider) throw new Error('STT_PROVIDER_REQUIRED')
-      const conversationSessionId =
-        globalThis.crypto?.randomUUID?.()
-        ?? `playground-${Date.now()}-${Math.random().toString(36).slice(2)}`
 
       setLoading('正在启动麦克风与音频处理…')
       const audio = new AudioSource()
@@ -240,7 +237,6 @@ export default function LiveSession({
       const llm = new ProxyLlmClient(
         readLanguageSnapshot(),
         () => useConfig.getState().islandReplyEnabled,
-        conversationSessionId,
       )
       llmRef.current = llm
       const storage = storageRef.current
@@ -252,7 +248,6 @@ export default function LiveSession({
       const rt = await connectRealtimeSttWithRetry({
         provider: selectedProvider,
         language: cfg.conversationLang,
-        sessionId: conversationSessionId,
         handlers: {
           onPartial: (text) => {
             const meta = draftMetaRef.current

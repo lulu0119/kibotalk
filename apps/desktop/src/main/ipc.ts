@@ -14,14 +14,7 @@ import {
   requestScreenRecordingPermission,
 } from './permissions'
 import { startSystemAudioCapture, stopSystemAudioCapture } from './system-audio'
-import {
-  clearAccessToken,
-  clearAccountCache,
-  readAccessToken,
-  readAccountCache,
-  writeAccessToken,
-  writeAccountCache,
-} from './auth-token'
+import { previousHistoryUserId } from './legacy-history'
 import {
   closeOnboardingWindow,
   getRequestedProductView,
@@ -30,14 +23,6 @@ import {
 } from './windows/onboarding'
 import { settleIslandContentSide } from './windows/island'
 import type { IslandContentSide } from '../shared/ipc'
-
-function broadcastAuthChanged(sourceWebContentsId: number): void {
-  for (const window of BrowserWindow.getAllWindows()) {
-    if (window.webContents.id !== sourceWebContentsId) {
-      window.webContents.send(IPC_CHANNEL.authChangedEvent)
-    }
-  }
-}
 
 function isIslandBarOffset(value: unknown): value is IslandBarOffset {
   if (!value || typeof value !== 'object') return false
@@ -66,12 +51,6 @@ export function registerIpcHandlers(params: {
     if (process.platform === 'darwin') app.dock?.hide()
     params.getIslandWindow()?.webContents.send(IPC_CHANNEL.onboardingCompletedEvent)
     closeOnboardingWindow()
-  })
-
-  ipcMain.handle(IPC_CHANNEL.onboardingReset, () => {
-    updateConfig({ onboardingCompleted: false })
-    if (process.platform === 'darwin') app.dock?.show()
-    params.getIslandWindow()?.webContents.send(IPC_CHANNEL.onboardingResetEvent)
   })
 
   ipcMain.handle(IPC_CHANNEL.onboardingResize, (_event, size: OnboardingContentSize) => {
@@ -136,21 +115,16 @@ export function registerIpcHandlers(params: {
   })
   ipcMain.handle(IPC_CHANNEL.appRequestQuit, () => params.requestQuit())
   ipcMain.handle(IPC_CHANNEL.appQuitReady, () => params.quitReady())
-  ipcMain.handle(IPC_CHANNEL.appGetVersion, () => app.getVersion())
-  ipcMain.handle(IPC_CHANNEL.authGetAccessToken, () => readAccessToken())
-  ipcMain.handle(IPC_CHANNEL.authSetAccessToken, (event, token: string) => {
-    if (!token || token.length > 4096) throw new Error('Invalid access token')
-    writeAccessToken(token)
-    broadcastAuthChanged(event.sender.id)
+  ipcMain.on(IPC_CHANNEL.appPreviousHistoryUserId, (event) => {
+    event.returnValue = previousHistoryUserId()
   })
-  ipcMain.handle(IPC_CHANNEL.authClearAccessToken, (event) => {
-    clearAccessToken()
-    broadcastAuthChanged(event.sender.id)
+  ipcMain.handle(IPC_CHANNEL.appGetLocalApiToken, async () => {
+    const response = await fetch('http://127.0.0.1:8787/api/local-token', {
+      signal: AbortSignal.timeout(3000),
+    })
+    if (!response.ok) throw new Error('Local KiboTalk proxy is unavailable')
+    const { token } = await response.json() as { token?: string }
+    if (!token) throw new Error('Local KiboTalk proxy returned no token')
+    return token
   })
-  ipcMain.handle(IPC_CHANNEL.authGetAccountCache, () => readAccountCache())
-  ipcMain.handle(IPC_CHANNEL.authSetAccountCache, (_event, value: string) => {
-    if (!value || value.length > 16_384) throw new Error('Invalid account cache')
-    writeAccountCache(value)
-  })
-  ipcMain.handle(IPC_CHANNEL.authClearAccountCache, () => clearAccountCache())
 }

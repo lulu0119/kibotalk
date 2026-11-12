@@ -1,10 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Moon, Sun, Languages, StickyNote, Fingerprint, AudioLines, Cable, Server, UserRound } from 'lucide-react'
-import {
-  createCurrentSpeakerEmbeddingStorage,
-  useAccount,
-} from '@kibotalk/app-shared'
-import { AccountPage } from '@kibotalk/pages'
+import { Moon, Sun, Languages, StickyNote, Fingerprint, AudioLines, Cable, Server } from 'lucide-react'
+import { createCurrentSpeakerEmbeddingStorage } from '@kibotalk/app-shared'
 import {
   Button,
   Card,
@@ -12,8 +8,6 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
-  Dialog,
-  DialogContent,
   Popover,
   PopoverContent,
   PopoverTrigger,
@@ -42,52 +36,12 @@ export type PlaygroundTab = 'live' | 'enroll' | 'vad' | 'direct'
 const THEME_KEY = 'kibotalk.playground.theme'
 declare const __PLAYGROUND_API_ORIGIN__: string
 
-function backendLabel(origin: string): string {
-  if (origin === 'http://localhost:8787') return '本地'
-  if (origin === 'https://kibotalk.superpowerlulu.win') return '生产'
-  return '自定义'
-}
-
 function PlaygroundConnectionStatus() {
-  const account = useAccount()
-  const [loginOpen, setLoginOpen] = useState(false)
-
   return (
-    <>
-      <div className="flex items-center gap-2">
-        <Button variant="outline" size="sm" className="paper-sheet gap-2 border-border/50" disabled>
-          <Server className="size-4" />
-          {backendLabel(__PLAYGROUND_API_ORIGIN__)} · {__PLAYGROUND_API_ORIGIN__}
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          className="paper-sheet gap-2 border-border/50"
-          disabled={account.loading}
-          onClick={() => {
-            if (account.account) void account.refresh()
-            else setLoginOpen(true)
-          }}
-        >
-          <UserRound className="size-4" />
-          {account.loading ? '检查登录…' : account.account?.user.email ?? '未登录 · 登录'}
-        </Button>
-      </div>
-      <Dialog open={loginOpen} onOpenChange={setLoginOpen}>
-        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto p-0 sm:max-w-xl">
-          <AccountPage
-            account={account.account}
-            loading={account.loading}
-            embedded
-            onAuthenticated={(next) => {
-              account.setAccount(next)
-              setLoginOpen(false)
-            }}
-            onAccountChange={account.setAccount}
-          />
-        </DialogContent>
-      </Dialog>
-    </>
+    <Button variant="outline" size="sm" className="paper-sheet gap-2 border-border/50" disabled>
+      <Server className="size-4" />
+      本机代理 · {__PLAYGROUND_API_ORIGIN__}
+    </Button>
   )
 }
 

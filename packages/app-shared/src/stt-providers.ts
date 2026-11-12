@@ -1,4 +1,4 @@
-import { authorizedFetch } from './api-runtime'
+import { apiFetch } from './api-runtime'
 
 export type SttProvider = {
   id: string
@@ -14,8 +14,8 @@ export function defaultSttProvider(providers: SttProvider[]): string | null {
 
 /** Fetch realtime STT providers configured server-side. */
 export async function fetchSttProviders(): Promise<SttProvider[]> {
-  const res = await authorizedFetch('/api/stt/providers')
-  if (!res.ok) return []
+  const res = await apiFetch('/api/stt/providers', { signal: AbortSignal.timeout(4000) }).catch(() => null)
+  if (!res?.ok) return []
   const data = (await res.json().catch(() => ({}))) as { providers?: SttProvider[] }
   return data.providers ?? []
 }

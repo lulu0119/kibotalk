@@ -39,6 +39,12 @@
 - AI があなたとして喋るものではない。
 - 主モードは「AI 語学教師とチャット」ではない —— 主モードは **人がいて、その場で口を開く**こと。
 
+## ローカルで実行
+
+`.env.example` をリポジトリ直下の `.env` にコピーし、文字起こしサービスとモデルを設定します。
+`pnpm dev:api` でローカルプロキシを起動し、`pnpm dev:web` または `pnpm dev:desktop` を実行します。
+履歴、設定、声紋は端末に保存されます。[詳しい手順](../README.md#run-locally)も参照してください。
+
 ## 現状
 
 初期 MVP。プロダクトの意図と要件は [仕様](./spec/live-reply-coach-mvp.md)。貢献者・コーディング Agent は [AGENTS.md](../AGENTS.md)。

@@ -119,7 +119,6 @@ export function createFakeSessionController(options: {
     draft: null,
     activeSession: lifecycle === 'stopped' ? null : fakeActiveSession,
     recoveredUnexpectedPause: false,
-    quotaExhausted: false,
     mode: 'auto',
     confidence: null,
     activeSttPath: 'realtime',
@@ -135,7 +134,6 @@ export function createFakeSessionController(options: {
     rounds,
     replyEnabled: true,
     setReplyEnabled: () => {},
-    providersLoaded: true,
     requestSessionStart: () => {},
   } as unknown as ProductSessionController
 }

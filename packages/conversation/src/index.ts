@@ -1,7 +1,4 @@
-export type {
-  ConversationStorage,
-  ConversationSyncMetadataStorage,
-} from './storage'
+export type { ConversationStorage } from './storage'
 export type {
   AppLanguage,
   ConversationPauseReason,

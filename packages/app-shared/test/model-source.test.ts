@@ -1,8 +1,8 @@
 import { env } from '@huggingface/transformers'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { defaultAppConfig } from '../src/config'
 import {
-  loadModelWithFallback,
+  useBundledModels,
   SPEAKER_MODEL_DTYPE,
   SPEAKER_MODEL_ID,
   SPEAKER_MODEL_REVISION,
@@ -11,10 +11,9 @@ import {
 
 afterEach(() => {
   useHuggingFaceModels()
-  vi.restoreAllMocks()
 })
 
-describe('model source fallback', () => {
+describe('model source', () => {
   it('pins the speaker model and threshold selected by held-out trials', () => {
     expect(SPEAKER_MODEL_ID).toBe(
       'onnx-community/wespeaker-voxceleb-resnet34-LM',
@@ -27,32 +26,16 @@ describe('model source fallback', () => {
   })
 
   it('uses immutable Hugging Face paths by default', () => {
-    useHuggingFaceModels('https://kibotalk.superpowerlulu.win')
+    useHuggingFaceModels()
 
     expect(env.remoteHost).toBe('https://huggingface.co/')
     expect(env.remotePathTemplate).toBe('{model}/resolve/{revision}/')
   })
 
-  it('retries a failed Hugging Face load once against the VPS mirror', async () => {
-    useHuggingFaceModels('https://kibotalk.superpowerlulu.win/')
-    const load = vi.fn(async () => {
-      if (env.remoteHost === 'https://huggingface.co/') {
-        throw new Error('hub unavailable')
-      }
-      return env.remoteHost
-    })
-
-    await expect(loadModelWithFallback(load)).resolves.toBe(
-      'https://kibotalk.superpowerlulu.win/models/',
-    )
-    expect(load).toHaveBeenCalledTimes(2)
-  })
-
-  it('does not hide an error when no VPS fallback was configured', async () => {
-    useHuggingFaceModels()
-    const load = vi.fn().mockRejectedValue(new Error('offline'))
-
-    await expect(loadModelWithFallback(load)).rejects.toThrow('offline')
-    expect(load).toHaveBeenCalledTimes(1)
+  it('uses packaged desktop models', () => {
+    useBundledModels()
+    expect(env.remoteHost).toBe('kibotalk-model://app/')
+    expect(env.remotePathTemplate).toBe('{model}/')
+    expect(env.useBrowserCache).toBe(false)
   })
 })

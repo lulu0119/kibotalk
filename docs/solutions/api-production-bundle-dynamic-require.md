@@ -44,5 +44,5 @@ Error: Dynamic require of "react-dom/server" is not supported
 {"ok":true,"database":"ok","version":"0.1.0"}
 ```
 
-因此以后改动 API 打包方式时，必须实际启动 Docker 镜像并请求健康检查，
-不能只以 `pnpm build` 作为生产可运行性的证据。
+云端 Docker 部署已退役。改动本机代理打包方式后，运行 `pnpm --filter @kibotalk/api start`
+并请求 `http://127.0.0.1:8787/health`，验证产物可启动。

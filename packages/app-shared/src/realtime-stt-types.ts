@@ -1,12 +1,9 @@
-import type { QuotaSummary } from './account'
-
 export type RealtimeSttHandlers = {
   onPartial?: (text: string) => void
   onCompleted?: (text: string) => void
   onError?: (message: string) => void
   onReady?: () => void
   onClose?: () => void
-  onQuotaExhausted?: (quota?: QuotaSummary) => void
 }
 
 export type RealtimeSttClient = {

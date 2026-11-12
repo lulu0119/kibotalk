@@ -21,4 +21,4 @@ Hono JSON / 同步端点也没有统一请求体上限。攻击者可在业务�
 
 ## 证据 / Evidence
 
-`apps/api/test/sync-auth.test.ts` 覆盖超限请求在路由处理前被拒绝。
+`apps/api/test/local-access.test.ts` 覆盖超限请求在路由处理前被拒绝。

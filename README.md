@@ -39,6 +39,34 @@ We believe people should keep ownership of their voice. AI can suggest; **you** 
 - Not an AI that speaks *as* you.
 - Not “chat with a language tutor” as the main mode — the main mode is **real people, live**.
 
+## Run locally
+
+Use Node.js 22 and pnpm. Copy `.env.example` to `.env` at the repository root,
+then fill in your iFlytek or DashScope credentials and your OpenAI-compatible
+LLM configuration. An LLM on the same machine is supported.
+
+```sh
+pnpm install --frozen-lockfile
+pnpm dev:api
+```
+
+### Web
+
+Run `pnpm dev:web` in another terminal and open the address Vite prints. To
+serve the built Web app, run `pnpm --filter @kibotalk/web build` and open the
+local proxy at `http://127.0.0.1:8787`.
+
+### macOS
+
+With the proxy running, use `pnpm dev:desktop`. To build an Apple Silicon
+installer with bundled VAD and speaker models, use
+`pnpm --filter @kibotalk/desktop package:mac`. Installers built before the
+hosted service was retired still point to the old server.
+
+History, preferences, and voiceprints stay on the device. Live transcription
+sends speech to the configured STT provider. Reply generation sends recent
+transcript context to the configured LLM.
+
 ## Status
 
 Early MVP. Product intent and requirements live in the [spec](./docs/spec/live-reply-coach-mvp.md). For contributors and agents, see [AGENTS.md](./AGENTS.md).

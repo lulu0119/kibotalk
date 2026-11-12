@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ConversationSessionSnapshot, ConversationStorage } from '@kibotalk/conversation'
 import { defaultAppConfig } from '../config'
-import { fetchSttProviders, defaultSttProvider } from '../stt-providers'
 import type { SessionLanguageSnapshot } from '../proxy-clients'
 import {
   useConversationSession,
@@ -22,9 +21,8 @@ export type ProductSessionParams = {
 
 /**
  * The live session every product surface (`apps/web`'s
- * `SessionPage`, `apps/desktop`'s Island) drives identically: fetch STT
- * providers, wire `useConversationSession` on `defaultAppConfig`'s hardcoded
- * knobs, interrupt on unmount, and derive the newest-first candidate rounds
+ * `SessionPage`, `apps/desktop`'s Island) drives identically. It supplies
+ * `defaultAppConfig`, interrupts on unmount and derives the newest-first candidate rounds
  * for `StickyNoteStack`. Only the surrounding JSX differs per surface.
  */
 export function useProductSession({
@@ -35,24 +33,8 @@ export function useProductSession({
   storage,
   candidateRoundsMax = 3,
 }: ProductSessionParams) {
-  const [providers, setProviders] = useState<Awaited<ReturnType<typeof fetchSttProviders>>>([])
-  const [providersLoaded, setProvidersLoaded] = useState(false)
   const [replyEnabled, setReplyEnabled] = useState(true)
   const previousLifecycleRef = useRef<ProductSessionLifecycle>('restoring')
-
-  useEffect(() => {
-    let cancelled = false
-    void fetchSttProviders().then((list) => {
-      if (cancelled) return
-      setProviders(list)
-      setProvidersLoaded(true)
-    })
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  const selectedProvider = useMemo(() => defaultSttProvider(providers), [providers])
 
   const session = useConversationSession({
     speechThreshold: defaultAppConfig.vad.speechThreshold,
@@ -70,8 +52,6 @@ export function useProductSession({
     sessionSnapshot,
     getSystemAudioStream,
     stopSystemAudioStream,
-    providers,
-    selectedProvider,
     storage,
     persistSessionLifecycle: !!storage && !!sessionSnapshot,
   })
@@ -105,7 +85,6 @@ export function useProductSession({
   )
 
   function requestSessionStart() {
-    if (!providersLoaded) return
     void session.start()
   }
 
@@ -114,7 +93,6 @@ export function useProductSession({
     rounds,
     replyEnabled,
     setReplyEnabled,
-    providersLoaded,
     requestSessionStart,
   }
 }

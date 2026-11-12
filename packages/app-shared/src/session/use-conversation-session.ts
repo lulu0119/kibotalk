@@ -31,7 +31,7 @@ import {
   isTranscriptionFailed,
   type RealtimeSttClient,
 } from '../realtime-stt-client'
-import type { SttProvider } from '../stt-providers'
+import { defaultSttProvider, fetchSttProviders } from '../stt-providers'
 import {
   finalizedTurnFromRealtimeSegments,
   type TranscribedAudioSegment,
@@ -64,10 +64,6 @@ export type ConversationSessionParams = {
   sttEnabled: boolean
   replyEnabled: boolean
   languageSnapshot: SessionLanguageSnapshot
-  /** Realtime STT providers from `/api/stt/providers`. */
-  providers: SttProvider[]
-  /** Preferred realtime provider id. */
-  selectedProvider: string | null
   /** Defaults to a fresh `InMemoryConversationStorage` (playground behavior). */
   storage?: ConversationStorage
   /** Product shells persist lifecycle/history; playground sessions stay ephemeral. */
@@ -102,7 +98,6 @@ export function useConversationSession(params: ConversationSessionParams) {
   )
   const [activeSession, setActiveSession] = useState<ConversationSession | null>(null)
   const [recoveredUnexpectedPause, setRecoveredUnexpectedPause] = useState(false)
-  const [quotaExhausted, setQuotaExhausted] = useState(false)
 
   const stableSpeakerRef = useRef<'user' | 'other'>('other')
   const paramsRef = useRef(params)
@@ -240,9 +235,14 @@ export function useConversationSession(params: ConversationSessionParams) {
     if (!resuming) setTurns([])
     setDraft(null)
     if (!resuming) setCandidateRounds([])
-    if (!resuming) setQuotaExhausted(false)
-    let conversationSessionId = `ephemeral-${Date.now()}`
     try {
+      const selectedProvider = defaultSttProvider(await fetchSttProviders())
+      if (!selectedProvider) {
+        reportError('LOCAL_STT_UNAVAILABLE')
+        setLoading('')
+        setLifecycle(resuming ? 'paused' : 'stopped')
+        return
+      }
       let pendingSessionStart: ConversationSessionStart | null = null
       if (!verifierRef.current) {
         verifierRef.current = new EmbeddingSpeakerVerifier({
@@ -260,18 +260,17 @@ export function useConversationSession(params: ConversationSessionParams) {
         if (resuming) {
           const resumed = await storageRef.current.resumeActiveSession()
           if (!resumed) throw new Error('NO_SESSION_TO_RESUME')
-          conversationSessionId = resumed.id
           setActiveSession(resumed)
           setRecoveredUnexpectedPause(false)
         } else {
           const snapshot = paramsRef.current.sessionSnapshot
           if (!snapshot) throw new Error('MISSING_SESSION_SNAPSHOT')
           const startedAt = Date.now()
-          conversationSessionId =
+          const id =
             globalThis.crypto?.randomUUID?.()
             ?? `${startedAt}-${Math.random().toString(36).slice(2)}`
           pendingSessionStart = {
-            id: conversationSessionId,
+            id,
             startedAt,
             snapshot,
             title: localizedSessionTitle({ startedAt, snapshot }),
@@ -280,8 +279,6 @@ export function useConversationSession(params: ConversationSessionParams) {
       }
 
       const p = paramsRef.current
-      const selectedProvider = p.selectedProvider
-      if (!selectedProvider) throw new Error('STT_PROVIDER_REQUIRED')
       if (pendingSessionStart) {
         const created = await storageRef.current.startSession(pendingSessionStart)
         setActiveSession(created)
@@ -321,7 +318,6 @@ export function useConversationSession(params: ConversationSessionParams) {
       const llm = new ProxyLlmClient(
         p.languageSnapshot,
         () => paramsRef.current.replyEnabled,
-        conversationSessionId,
       )
       llmRef.current = llm
       const storage = storageRef.current
@@ -333,7 +329,6 @@ export function useConversationSession(params: ConversationSessionParams) {
       const rt = await connectRealtimeSttWithRetry({
         provider: selectedProvider,
         language: p.languageSnapshot.conversationLang,
-        sessionId: conversationSessionId,
         handlers: {
           onPartial: (text) => {
             const meta = draftMetaRef.current
@@ -342,15 +337,6 @@ export function useConversationSession(params: ConversationSessionParams) {
           },
           onError: (message) => {
             reportError(`实时转写：${message}`)
-          },
-          onQuotaExhausted: () => {
-            setQuotaExhausted(true)
-            setStatusNote('本轮已完成；本月可用分钟数已用完，会话将在最终建议生成后停止。')
-            globalThis.dispatchEvent?.(new CustomEvent('kibotalk:quota-changed'))
-            void (async () => {
-              await pipeline.idle().catch(() => {})
-              await stop()
-            })()
           },
         },
       })
@@ -398,7 +384,6 @@ export function useConversationSession(params: ConversationSessionParams) {
         systemRealtimeRef.current = await connectRealtimeSttWithRetry({
           provider: selectedProvider,
           language: p.languageSnapshot.conversationLang,
-          sessionId: conversationSessionId,
           handlers: {
             onPartial: (text) => {
               setDraft((current) =>
@@ -413,15 +398,6 @@ export function useConversationSession(params: ConversationSessionParams) {
               )
             },
             onError: (message) => reportError(`系统音频实时转写：${message}`),
-            onQuotaExhausted: () => {
-              setQuotaExhausted(true)
-              setStatusNote('本轮已完成；本月可用分钟数已用完，会话将在最终建议生成后停止。')
-              globalThis.dispatchEvent?.(new CustomEvent('kibotalk:quota-changed'))
-              void (async () => {
-                await pipeline.idle().catch(() => {})
-                await stop()
-              })()
-            },
           },
         })
         const systemRealtimeAggregator = createSegmentAggregator<TranscribedAudioSegment>({
@@ -791,7 +767,6 @@ export function useConversationSession(params: ConversationSessionParams) {
     lifecycle,
     activeSession,
     recoveredUnexpectedPause,
-    quotaExhausted,
     start,
     pause,
     resume,

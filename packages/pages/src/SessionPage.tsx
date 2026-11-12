@@ -32,14 +32,12 @@ import {
   Settings,
   Sparkles,
   Square,
-  UserRound,
 } from 'lucide-react'
 
 export type SessionPageProps = {
   controller: ProductSessionController
   onGoSettings?: () => void
   onGoHistory?: () => void
-  onGoAccount?: () => void
 }
 
 function formatDuration(milliseconds: number): string {
@@ -101,7 +99,7 @@ function statusLabel(controller: ProductSessionController, translate: ReturnType
  * and suggestion columns on desktop; one suggestion stage with a transcript
  * overlay on narrow screens.
  */
-export function SessionPage({ controller, onGoSettings, onGoHistory, onGoAccount }: SessionPageProps) {
+export function SessionPage({ controller, onGoSettings, onGoHistory }: SessionPageProps) {
   const { t, language } = useI18n()
   const [transcriptOpen, setTranscriptOpen] = useState(() =>
     window.matchMedia('(min-width: 640px)').matches,
@@ -112,6 +110,12 @@ export function SessionPage({ controller, onGoSettings, onGoHistory, onGoAccount
   const snapshot = session.activeSession?.snapshot
   const latestTurn = session.turns.at(-1)
   const currentTranscript = session.draft ?? latestTurn
+  let sessionError = ''
+  if (session.error === 'LOCAL_STT_UNAVAILABLE') {
+    sessionError = t('localSttUnavailable')
+  } else if (shouldShowSessionError(session.lifecycle, session.error)) {
+    sessionError = session.error === 'VOICEPRINT_REQUIRED' ? t('voiceprintRequired') : session.error
+  }
   const transcriptItems = useMemo(() => session.turns, [session.turns])
   const status = statusLabel(controller, t)
   const active = session.lifecycle === 'running' || session.lifecycle === 'paused'
@@ -201,12 +205,6 @@ export function SessionPage({ controller, onGoSettings, onGoHistory, onGoAccount
                   {t('settings')}
                 </DropdownMenuItem>
               ) : null}
-              {onGoAccount ? (
-                <DropdownMenuItem onSelect={onGoAccount}>
-                  <UserRound className="size-4" />
-                  账户与额度
-                </DropdownMenuItem>
-              ) : null}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -217,11 +215,9 @@ export function SessionPage({ controller, onGoSettings, onGoHistory, onGoAccount
           {t('activeSessionRecovered')}
         </div>
       ) : null}
-      {shouldShowSessionError(session.lifecycle, session.error) ? (
-        <div className="shrink-0 rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
-          {session.error === 'VOICEPRINT_REQUIRED'
-            ? t('voiceprintRequired')
-            : session.error || t('sessionUnavailable')}
+      {sessionError ? (
+        <div role="alert" className="shrink-0 rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
+          {sessionError}
         </div>
       ) : null}
 

@@ -13,7 +13,6 @@ export type ThinServerMessage =
   | { type: 'ready' }
   | { type: 'partial'; text: string }
   | { type: 'completed'; text: string }
-  | { type: 'quota_exhausted'; quota?: unknown }
   | { type: 'error'; message: string; code?: string }
 
 export type DashscopeRealtimeConfig = {

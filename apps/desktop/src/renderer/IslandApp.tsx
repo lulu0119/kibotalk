@@ -1,17 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import type { ConversationStorage } from '@kibotalk/conversation'
 import {
-  accountConversationDatabaseName,
-  IndexedDbConversationStorage,
-  type ConversationStorage,
-} from '@kibotalk/conversation'
-import {
+  createLocalConversationStorage,
   createSessionSnapshot,
   I18nProvider,
   loadLanguagePrefs,
   subscribeLanguagePrefs,
   useI18n,
-  useAccount,
-  useCloudConversationStorage,
   useProductSession,
   type LanguagePrefs,
 } from '@kibotalk/app-shared'
@@ -35,11 +30,9 @@ async function getSystemAudioStream(): Promise<MediaStream> {
 function ReadyIsland({
   prefs,
   storage,
-  syncPending,
 }: {
   prefs: LanguagePrefs
   storage: ConversationStorage
-  syncPending: boolean
 }) {
   const [contentSide, setContentSide] = useState<IslandContentSide>('above')
   const contentSideRef = useRef(contentSide)
@@ -193,10 +186,8 @@ function ReadyIsland({
     <IslandPage
       controller={controller}
       contentSide={contentSide}
-      syncPending={syncPending}
       onGoSettings={() => void window.kibotalk.onboarding.open('settings')}
       onGoHistory={() => void window.kibotalk.onboarding.open('history')}
-      onGoAccount={() => void window.kibotalk.onboarding.open('account')}
       onHide={() => void window.kibotalk.island.hide()}
       onQuit={() => void window.kibotalk.app.quitReady()}
     />
@@ -206,19 +197,7 @@ function ReadyIsland({
 function IslandContent({ prefs }: { prefs: LanguagePrefs }) {
   const { t } = useI18n()
   const [completed, setCompleted] = useState<boolean | null>(null)
-  const accountState = useAccount()
-  const localStorage = useMemo(
-    () => new IndexedDbConversationStorage(
-      accountState.account
-        ? accountConversationDatabaseName(accountState.account.user.id)
-        : undefined,
-    ),
-    [accountState.account?.user.id],
-  )
-  const cloud = useCloudConversationStorage({
-    local: localStorage,
-    userId: accountState.account?.user.id ?? null,
-  })
+  const [storage] = useState(createLocalConversationStorage)
 
   useEffect(() => {
     let cancelled = false
@@ -227,35 +206,20 @@ function IslandContent({ prefs }: { prefs: LanguagePrefs }) {
     })
     const unsubscribeCompleted = window.kibotalk.onboarding.onCompleted(() => {
       setCompleted(true)
-      void accountState.refresh()
     })
-    const unsubscribeReset = window.kibotalk.onboarding.onReset(() => setCompleted(false))
     return () => {
       cancelled = true
       unsubscribeCompleted()
-      unsubscribeReset()
     }
-  }, [accountState.refresh])
+  }, [])
 
-  if (completed !== true || accountState.loading || !accountState.account || !cloud.storage) {
+  if (completed !== true) {
     return (
       <div className="flex h-dvh w-full items-end justify-end p-2">
         <IslandBar>
           <IslandStatus
-            label={
-              completed === null || accountState.loading
-                ? t('preparing')
-                : !accountState.account
-                  ? '登录'
-                  : t('preparing')
-            }
-            onClick={
-                completed === null || accountState.loading
-                  ? undefined
-                  : () => void window.kibotalk.onboarding.open(
-                      accountState.account ? 'settings' : 'account',
-                    )
-            }
+            label={t('preparing')}
+            onClick={completed === false ? () => void window.kibotalk.onboarding.open() : undefined}
           />
           <IslandSeparator />
           <IslandDragHandle label={t('moveWindow')} />
@@ -264,7 +228,7 @@ function IslandContent({ prefs }: { prefs: LanguagePrefs }) {
     )
   }
 
-  return <ReadyIsland prefs={prefs} storage={cloud.storage} syncPending={Boolean(cloud.error)} />
+  return <ReadyIsland prefs={prefs} storage={storage} />
 }
 
 export default function IslandApp() {

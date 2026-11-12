@@ -7,7 +7,6 @@ export default defineConfig({
   clean: true,
   splitting: false,
   sourcemap: false,
-  // The production container is intentionally dependency-free at runtime.
-  // Node built-ins remain external; all npm/workspace packages are bundled.
+  // Bundle npm and workspace packages for the standalone local proxy.
   noExternal: [/.*/],
 })

@@ -7,7 +7,7 @@
 
 /** Mirrors Electron's `systemPreferences.getMediaAccessStatus` return type without importing `electron` into renderer-reachable code. */
 export type MediaAccessStatus = 'not-determined' | 'granted' | 'denied' | 'restricted' | 'unknown'
-export type ProductWindowView = 'settings' | 'history' | 'voiceprint' | 'account'
+export type ProductWindowView = 'settings' | 'history' | 'voiceprint'
 export type IslandContentSide = 'above' | 'below'
 export type IslandBarOffset = { x: number; y: number }
 export type DesktopSessionLifecycle = 'restoring' | 'stopped' | 'starting' | 'running' | 'paused'
@@ -32,8 +32,6 @@ export const IPC_CHANNEL = {
   onboardingOpen: 'onboarding:open',
   onboardingComplete: 'onboarding:complete',
   onboardingCompletedEvent: 'onboarding:completed',
-  onboardingReset: 'onboarding:reset',
-  onboardingResetEvent: 'onboarding:reset-completed',
   onboardingResize: 'onboarding:resize',
   onboardingClose: 'onboarding:close',
   onboardingViewRequestedEvent: 'onboarding:view-requested',
@@ -53,17 +51,11 @@ export const IPC_CHANNEL = {
   islandSetPosition: 'island:set-position',
   sessionUpdateState: 'session:update-state',
   sessionCommandEvent: 'session:command',
+  appGetLocalApiToken: 'app:get-local-api-token',
+  appPreviousHistoryUserId: 'app:previous-history-user-id',
   appSetLaunchAtLogin: 'app:set-launch-at-login',
   appRequestQuit: 'app:request-quit',
   appQuitReady: 'app:quit-ready',
-  appGetVersion: 'app:get-version',
-  authGetAccessToken: 'auth:get-access-token',
-  authSetAccessToken: 'auth:set-access-token',
-  authClearAccessToken: 'auth:clear-access-token',
-  authChangedEvent: 'auth:changed',
-  authGetAccountCache: 'auth:get-account-cache',
-  authSetAccountCache: 'auth:set-account-cache',
-  authClearAccountCache: 'auth:clear-account-cache',
 } as const
 
 export type OnboardingStatus = { completed: boolean; view: ProductWindowView }
@@ -79,11 +71,9 @@ export type KiboTalkDesktopApi = {
     getStatus: () => Promise<OnboardingStatus>
     open: (view?: ProductWindowView) => Promise<void>
     complete: () => Promise<void>
-    reset: () => Promise<void>
     resize: (size: OnboardingContentSize) => Promise<void>
     close: () => Promise<void>
     onCompleted: (callback: () => void) => () => void
-    onReset: (callback: () => void) => () => void
     onViewRequested: (callback: (view: ProductWindowView) => void) => () => void
   }
   permissions: {
@@ -115,19 +105,11 @@ export type KiboTalkDesktopApi = {
     onCommand: (callback: (command: DesktopSessionCommand) => void) => () => void
   }
   app: {
-    getVersion: () => Promise<string>
+    getLocalApiToken: () => Promise<string>
+    previousHistoryUserId: string | null
     setLaunchAtLogin: (enabled: boolean) => Promise<void>
     requestQuit: () => Promise<void>
     quitReady: () => Promise<void>
-  }
-  auth: {
-    getAccessToken: () => Promise<string | null>
-    setAccessToken: (token: string) => Promise<void>
-    clearAccessToken: () => Promise<void>
-    onChanged: (callback: () => void) => () => void
-    getAccountCache: () => Promise<string | null>
-    setAccountCache: (value: string) => Promise<void>
-    clearAccountCache: () => Promise<void>
   }
 }
 

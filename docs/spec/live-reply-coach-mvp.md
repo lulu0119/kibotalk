@@ -5,14 +5,9 @@
 - **关联**：[产品想法](../brainstorm/2026-07-16-live-reply-coach-language-assist.md)
 - **作者**：路路（与神奈子需求对齐后整理）
 
-> **比赛生产补充（2026-07-25）**：本文件中早期的 Railway、Supabase、
-> “MVP 无账号”描述已被
-> [ADR 0005](../adr/0005-competition-production-platform.md) 覆盖。正式入口为
-> `https://kibotalk.superpowerlulu.win`，账号、强制加密同步、额度和发布要求以 ADR 0005
-> 及本文新增 F12–F15 为准。
->
-> **单 API origin（2026-09-10）**：客户端只连接当前 API origin（本地
-> `8787` 或生产日本站）。已不存在主从中转、节点选择器或 `relayNodeId`。
+> KiboTalk 在本机运行。历史和声纹保存在设备上，转写和回复建议使用本机代理中配置的提供方。
+> 见[本机运行说明](../../README.md#run-locally)。[ADR 0005](../adr/0005-competition-production-platform.md)
+> 记录已退役的比赛部署。
 
 ## 摘要
 
@@ -46,7 +41,6 @@
         · 右上角小圆圈显示下载进度
         · 权重未下完 → 不能进入下一步 / 开始会话
     → 声纹录制（权重已就绪；口令随对话语言 ja/en/zh；embedding 仅在本机）
-    → 邮箱 OTP 登录并完成强制文本同步
     → 开始会话（快照 uiLang / conversationLang / meaningLang / level / 音源与设备；进行中锁定）
     → 持续听音频 → VAD 切段 → 说话人判定
         → other 说完：STT（language=conversationLang）→ 写入对话 → 请求 LLM（通常给 3 条候选）
@@ -87,10 +81,7 @@
 | F09 | 会话历史 | 本地长期保留会话；按开始日期、时间与对话语言显示标题，格式由会话的 `uiLang` 决定 | 列表 / 详情可回看转写和当时的候选；不保存原始音频 |
 | F10 | 响应式 UI | iPhone Safari + Mac Chrome/Safari 同一 URL；宽屏 A+B 可折叠双栏，窄屏内容区对话层 | 无页面横向溢出；两栏等高并独立滚动 |
 | F11 | PWA（移动） | 可「添加到主屏幕」 | 全屏、少地址栏干扰 |
-| F12 | 账号与设备 | 新邮箱 OTP 注册；已有账户直接登录；Web 安全 cookie、桌面 safeStorage token；设备列表 / 撤销 / 封禁 | 未登录不能调用云 STT/LLM；同账号仅一个活跃 AI 会话 |
-| F13 | 云同步 | session / turn / suggestion / prefs 自动同步且无关闭开关；服务端 AES-256-GCM；不上传音频或声纹 | 本地先持久化并后台补同步；同步故障不阻塞新会话；支持单会话和账户删除 |
-| F14 | 额度与兑换 | 免费 30 分钟/月；Pro ¥30/30 天/600 分钟；永久分钟；兑换码与后台赠送 | 按实际 STT 秒数记账、分钟展示；免费 → Pro → 永久；上游失败不扣 |
-| F15 | 生产发布 | 日本 VPS + Caddy HTTPS + Postgres；Apple Silicon ad-hoc DMG；GitHub Actions CI/CD | `kibotalk.superpowerlulu.win` 健康；macOS 13+ arm64；Web Q8 模型首选固定 revision 的 Hugging Face、失败回退同源，桌面模型内置 |
+| F15 | 本机运行 | 本机 Hono 代理、Web、Apple Silicon macOS | 浏览器从固定版本下载模型。桌面安装包内置模型 |
 
 #### P1 — 演示加分
 
@@ -110,7 +101,7 @@
 | TTS / AI 代说 | 产品定位是用户自己开口 |
 | iPhone 通话监听 | Web / PWA 做不到 |
 | 登录账号 | 本地会话即可 |
-| 离线 LLM | LLM 走在线 API；STT 走 realtime 云端代理（§2.9） |
+| 离线 LLM | STT 使用配置的实时转写提供方，LLM 可使用本地 OpenAI 兼容端点（§2.9） |
 | 会话中热切换语言 | 时间轴与 STT hint 会混乱；仅会话外改、新会话快照 |
 | 对方说异于对话语言的语 | 同场双方都用 `conversationLang`；异语为后续愿景 |
 
@@ -223,7 +214,7 @@ type ReplyCandidate = {
 - **Web 会话页**：控制区固定顶部，页面本身不随内容滚动；宽屏 A+B 双栏等高且独立滚动，对话按钮在展开时仍保留并显示激活态；移动端同一按钮打开 / 收起对话层。
 - **桌面 Island**：窗口 always-on-top、可拖移和八向缩放；细边框只在鼠标位于窗口内容或缩放命中区时出现。窗口上半屏时内容在 Island 下方，下半屏时在上方；转写仍是视觉最上方内容。Island 上直接放状态、相邻的暂停 / 继续和停止、AI 开关、四向拖动把手；更多菜单放历史、设置、隐藏、退出。
 - **候选卡**：最多三轮，按容器高度减少；不重叠、不旋转，旧轮逐级透明且不可点击。无候选时不显示空白黄卡；首次请求可显示与最终布局一致的骨架。Web 与桌面均显示日语 ruby 和助词高亮。
-- **设置**：通用、对话、声纹、权限、关于。普通项立即保存，无保存按钮；活跃会话锁定会话定义类项目。用户看不到模型名称、模型选择或模型删除。清历史与重置个人数据在账号页（退出并清除本地数据 / 注销账号）。
+- **设置**：通用、对话、声纹、权限、关于。普通项立即保存，无保存按钮；活跃会话锁定会话定义类项目。用户看不到模型名称、模型选择或模型删除。历史页可删除单次会话或清空已结束的历史。声纹可在设置中删除。
 - **音频**：Web 只用系统默认麦克风。桌面可选真实麦克风设备及麦克风 / 系统音频 / 同时采集；同时采集为 mic=user、system=other 两条独立 lane，不混音。
 - **macOS 状态栏**：首次引导后默认不占 Dock；静态品牌图标菜单可显示 / 隐藏、控制会话、切换 AI、进入历史 / 设置及退出。动态状态图标和系统通知延期。所有主动退出路径均需确认；活跃时先停止保存再退出。
 
@@ -244,7 +235,7 @@ type ReplyCandidate = {
 | LLM | **xsai** | AIRI 生态 |
 | STT | 统一走代理 `WS /stt-realtime`；DashScope `qwen3-asr-flash-realtime` | 见 §2.9、ADR 0004、ADR 0005 |
 | 服务端 | **Hono** 薄代理（转发 LLM + STT，藏 key，streaming） | — |
-| 部署 | **日本 VPS**：Docker Compose + Caddy + Hono + PostgreSQL | ADR 0005 |
+| 本机代理 | Hono，监听 `127.0.0.1:8787` | Web 与 macOS 共用 |
 | Prompt 评估 | **vieval**（根目录 config + `evals/`） | [vieval-dev/vieval](https://github.com/vieval-dev/vieval) |
 | 移动 | **PWA**（`apps/web` 构建） | — |
 | 桌面 Web | 同一 `packages/*`，`apps/web` 响应式 | 对齐 AIRI「浏览器入口」角色，非其命名 |
@@ -374,7 +365,7 @@ Velin(repliesPrompt) → xsAI → JSON: 3 candidates | []
 3. **多轮无用户**：可连续多个 other turn——每次 other 停顿达标都触发 LLM；若返回 3 条则刷新候选，若 `[]` 则保留原展示
 4. **完整对话进下一轮**：被打断后新一轮 LLM 的 context = **所有已完成的 ConversationTurn**。半截候选与 realtime partial **不进 context**（§1.4「以 STT 为准」）
 5. **抢说 / 连说**：对方或用户停说后的阈值倒计时中若另一方（或同方）又开口 → **取消待触发或在途的 LLM**，先完成新 turn 的 STT/入库，再按规则 1 **重新请求教练**（user 入库后同样触发，不再「只入库不出 LLM」）
-6. **STT 失败**：realtime 短退避重连 → 仍失败 → `appendTurn({ text: '', sttFailed: true })` 或停转写并明示错误（生产不降级）→ **仍可触发 LLM**（上下文带 `sttFailed`，由模型决定是否给提示）→ 循环继续，**不杀会话**（ADR 0005）
+6. **STT 失败**：realtime 短退避重连 → 仍失败 → `appendTurn({ text: '', sttFailed: true })` 或停转写并明示错误→ **仍可触发 LLM**（上下文带 `sttFailed`，由模型决定是否给提示）→ 循环继续，**不杀会话**
 7. **LLM 失败**：自动重试 1 次（1s 退避）→ 仍失败 → 候选区可提示「出候选失败，重试」，但**不清空**上一轮已提交候选；turn 已入库不动 → 循环继续听下一轮，**不杀会话**
 8. **不做**：熔断、多轮指数退避、离线缓存重放、客户端预过滤闸门、双模型、中途 partial 触发 LLM——MVP 过度
 
@@ -435,7 +426,7 @@ VAD 停顿阈值与说话人判定阈值为**频繁调试参数**，在 playgrou
 **方案**：enroll 一次，embedding 缓存 IndexedDB；提供手动重录按钮。每设备各 enroll 一次，**不**进服务端。
 
 - embedding 是浮点向量（几百 KB），放 **IndexedDB**（非 localStorage——后者只适合小字符串且 5MB 上限、同步阻塞）
-- 账号只同步文本会话与偏好；换设备仍须各自录入声纹，embedding 永不上传
+- 声纹保存在当前设备的 IndexedDB。换设备后各自录入声纹。
 
 **`packages/speaker` 接口**：
 
@@ -458,9 +449,8 @@ playground **声纹页**同时覆盖 P0-c（`enroll` + `saveEmbedding`）与 P0-
 
 #### 会话持久化
 
-**比赛生产采用 local-first + 强制云同步**：完整 `ConversationSession` 先持久化到 IndexedDB，并自动同步到 PostgreSQL 加密存储。提供 active-session 指针及历史列表 / 详情；每个正式 turn、候选和生命周期变化即时写入；不保存原始音频。历史无限期保留，直到用户删除。
-
-本地 IndexedDB 按账户 ID 隔离，切换账户时取消旧账户未完成的同步请求，服务端也会核对同步请求冻结的账户 ID。会话与偏好在上传成功前保留持久 dirty 标记并指数退避重试；首次登录必须先完成云端拉取，不能用设备默认偏好覆盖已有账户偏好。成功认证后只缓存不含 token 的最小账户快照；断网启动可据此进入对应账户的**只读历史**。离线时不能新建或删除会话，也无法调用 AI。
+完整 `ConversationSession` 保存在本机 IndexedDB。正式 turn、候选和生命周期变化即时写入。
+会话历史含转写和建议，原始音频只用于实时处理。删除记录只影响当前设备。
 
 **`packages/conversation` 接口**：
 
@@ -483,10 +473,7 @@ clearHistory(): Promise<void>
 - running / paused 在刷新、崩溃或设备中断后恢复为 `pauseReason: 'unexpected'`，可继续或停止。
 - 时长不计暂停区间。
 
-Realtime 连续语音也必须在 30 秒切成正式 turn（`SegmentAggregator.maxMs`）；
-服务端按 PCM 样本数再做同样上限。余额耗尽时，
-服务端只给该 session 一次最终建议 allowance，其余零余额 LLM 请求
-直接拒绝；上游失败不消费 allowance。
+实时语音按最多 30 秒的片段处理。DashScope 代理另外限制每轮 PCM 样本数。
 
 历史列表和详情从会话开始时间与对话语言生成标题，按会话冻结的 `uiLang` 本地化。已有会话也用同一规则显示标题。
 
@@ -560,154 +547,26 @@ packages/pipeline、speaker、llm、conversation  （真实实现）
  （极简 UI，先调通）    （原型定稿后的产品壳）
 ```
 
-### 2.8 服务端与部署
+### 2.8 本机代理
 
-**形态**：客户端编排 + Hono 业务网关。VAD、声纹与 turn pipeline 留在客户端；
-服务端代理 STT/LLM，并负责 auth、加密同步、额度、活跃会话租约、遥测和管理后台。
+客户端负责 VAD、声纹、turn pipeline 和会话持久化。`apps/api` 在
+`127.0.0.1:8787` 运行，加载本机 `.env` 的提供方配置。
 
-**框架**：Hono。轻量、平台无关（Node / Workers / Bun 都能跑），方便将来换 hosting。
+| 路由 | 协议 | 作用 |
+|------|------|------|
+| `POST /api/llm` | SSE | 向配置的模型发送对话上下文，流式返回候选 |
+| `GET /api/stt/providers` | HTTP | 列出本机配置的实时转写提供方 |
+| `POST /api/stt/direct/session` | HTTP | 为讯飞签发短期 WebSocket URL |
+| `WS /api/stt-realtime` | WebSocket | 代理 DashScope 的 `session.start`、`append`、`commit` 和 `finish` |
 
-**职责边界**：
-
-| 路由 | 协议 | 作用 | 备注 |
-|------|------|------|------|
-| `POST /api/llm` | **SSE 流式** | 接收对话上下文，转发 DeepSeek，流式回 3 条候选或 `[]` | 必须登录；key 只在服务端 env |
-| `WS /api/stt-realtime` | **WebSocket** | 中转短令牌换单次票据；speech PCM / commit；DashScope 中继；计时扣额度 | 唯一 STT 路径；不保存音频 |
-| `/api/auth/*` | REST | 邮箱 OTP、当前账户、设备撤销、WS 单次票据 | Resend + 安全 cookie / bearer |
-| `/api/sync/*` | REST | 加密会话、删除 tombstone 与偏好同步 | AES-256-GCM；不含声纹 / 音频 |
-| `/api/admin/*` | REST | 用户、账本、赠送、兑换码、运行面板 | 管理邮箱白名单 |
-
-**流式协议选型**：
-
-- **LLM 用 SSE**（Server-Sent Events）：单向服务端→客户端，Hono `streamSSE` 原生支持，是 LLM 流式的事实标准。代理透传 provider 的原始 token 流，浏览器用 `fetch` + `ReadableStream` 读，边收边增量解析结构化输出（3 候选的 JSON，用 partial-json 类库增量 parse）——第一个候选生成时用户就能开始读
-- **Realtime STT 用 WebSocket**：说话中持续上行 PCM、下行 partial；定稿经 TurnGate 后入库。浏览器只连同源 `/stt-realtime`，不直连上游
-
-**Realtime 薄协议（浏览器 ↔ 代理）**：
-
-- 客户端 → 服务端：`session.start`（含 `language`）、`append`（base64 pcm16le）、`commit`、`finish`
-- 服务端 → 客户端：`ready`、`partial`、`completed`、`error`
-- 上游厂商事件映射留在服务端（`packages/stt` 辅助 + `apps/api` 中继）
-
-**中断（对接 §2.4 状态机的"打断"分支）**：
-
-- 浏览器 `AbortController.abort()` 断开 `/llm` 连接
-- 代理在 Hono 里检测 `c.req.raw.signal.aborted` → abort 上游 provider 请求
-- Realtime：客户端发 `finish` 或关闭 WS → 代理结束上游 session
-- 半截候选丢弃（不进 context，符合 §1.4"以 STT 为准"）
-
-```ts
-app.post('/llm', streamSSE(async (c) => {
-  const signal = c.req.raw.signal
-  const stream = await llmClient.streamChat({ prompt, context, signal })
-  for await (const token of stream) c.streamSSEMessage('token', token)
-}))
-```
-
-**不做**：
-
-- 不做 pipeline 编排（VAD / speaker / conversation store 全在浏览器）
-- 不保存原始音频或声纹 embedding；文本密文与最小查询元数据才入库
-- 不做 SSR / 模板渲染
-
-**Realtime 上行音频**：16 kHz 单声道 PCM（base64 pcm16le），经 `append` 事件上行；不经 batch WAV POST。
-
-- 浏览器里音频本就是 PCM（VAD、speaker gate 都吃 PCM）
-- 16 kHz mono 是语音采样标准；realtime 按 speech fragment 流式上行
-- `packages/audio` 仍暴露 `encodeWav`（调试 / 录音导出等）；STT 路径不依赖 WAV 上传
-
-**静态托管（`apps/web` 产物）**：Web 与 API 打进同一生产镜像，由 Caddy 在
-`kibotalk.superpowerlulu.win` 前置 TLS。Web 的 WeSpeaker ResNet34-LM 与 Silero 都使用
-Q8：首选固定 commit 的 Hugging Face 文件并进入浏览器缓存，加载失败自动重试 VPS 同源镜像；
-桌面模型打进 DMG。DMG 仅通过 GitHub Release 分发，VPS 不托管安装包。
-
-- Hono 用 `serveStatic` 把 `apps/web/dist` 挂到根路径，API 路由挂 `/llm` `/stt-realtime`，PWA manifest / service worker 同源加载（iOS Safari 添加到主屏幕最稳）
-- 开发期各自 dev server（Vite 5173 + Hono 8787），Vite proxy 把 `/llm` `/stt-realtime` 转发到 Hono，避免开发期 CORS
-- 不构成锁定：`apps/web` 仍是独立 Vite 包，产物纯静态，将来要拆到 Cloudflare Pages 只需改 Hono 不 serve 静态 + 加 CORS
-
-```ts
-app.use('/llm', ...)
-app.use('/stt-realtime', ...)
-app.use('/*', serveStatic({ root: '../web/dist' }))
-```
-
-**部署**：日本 VPS 上的 Docker Compose：
-
-- Caddy：自动 HTTPS、反向代理和 Q8 模型故障回退镜像；
-- Hono：单文件 production bundle，启动时执行幂等 schema migration；
-- PostgreSQL 17：账号、设备、额度账本、密文同步和 30 天遥测；
-- GitHub runner 构建 amd64 镜像后经 SSH 上传，VPS 不访问 GitHub；
-- Cloudflare 记录为 DNS only；不使用代理软件。
-
-**与客户端的分工**：
-
-```text
-浏览器（Renderer + Web Worker）        VPS（Caddy + Hono + PostgreSQL）    讯飞
-─────────────────────────              ──────────────────────────────
-VAD → SpeakerGate → TurnGate
-  申请签名 URL ─────────────────────→  鉴权、签名
-  PCM binary ─────────────────────────────────────────────────────────→ WSS
-                  ↓                                      ←── partial / final
-            TurnGate flush → ingestFinalizedTurn
-                  ↓
-            conversation.appendTurn（仅定稿）
-                  ↓
-        任一 speaker: ──POST /llm───→  转发 LLM provider
-                                  ←── streaming JSON（3 候选或 []）
-```
-账号、设备、同步、额度和后台已纳入比赛生产基线，完整约束见 F12–F15 与 ADR 0005。
+Web 构建产物由本机代理提供，开发时 Vite 将 `/api/*` 转发给代理。
+Web 从 Hugging Face 下载固定版本的 WeSpeaker 与 Silero 模型，桌面安装包内置模型。
 
 ### 2.9 配置与环境变量
 
-**原则**：provider 长期签名 secret / base URL / model name 仍只走服务端 env，
-不落 DB；账号、额度与密文同步数据进入 PostgreSQL。讯飞直连时客户端只得到带
-时间戳与唯一 UUID 的签名 URL，不得到 APISecret。
-
-**命名方案：前缀 + active 选择器**。加 provider 不改现有变量名，可同时配多组，一个变量切换当前使用的。
-
-**生产固定**：LLM 直连 DeepSeek `deepseek-v4-flash`（thinking disabled）；
-STT 使用 `STT_ACTIVE=iflytek-realtime`，浏览器直连讯飞实时语音转写大模型。
-DashScope adapter 与讯飞并行保留，但生产不启用。
-
-```bash
-STT_ACTIVE=iflytek-realtime
-STT_IFLYTEK_APP_ID=xxxxxxxx
-STT_IFLYTEK_API_KEY=xxxxxxxx
-STT_IFLYTEK_API_SECRET=xxxxxxxx
-STT_IFLYTEK_WS_URL=wss://office-api-ast-dx.iflyaisol.com/ast/communicate/v1
-
-# 本地开发可选：LLM 走 OpenRouter
-LLM_ACTIVE=openrouter
-LLM_OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
-LLM_OPENROUTER_API_KEY=sk-or-...
-LLM_OPENROUTER_MODEL=deepseek/deepseek-chat     # 或 anthropic/claude-...，随时切
-
-# 将来要直连某家（绕开 OpenRouter）时再加一组，无需改代码
-# LLM_DEEPSEEK_BASE_URL=https://api.deepseek.com/v1
-# LLM_DEEPSEEK_API_KEY=sk-...
-# LLM_DEEPSEEK_MODEL=deepseek-chat
-```
-
-**与代码的接口（provider 无关，不写死 OpenRouter）**：
-
-- `packages/llm` 暴露 `createLlmClient({ provider, baseUrl, apiKey, model })`，启动时按 `LLM_ACTIVE` 选一组 env 注入
-- STT provider 工厂同时保留 DashScope 同源 WS 与讯飞 browser-direct；
-  `STT_ACTIVE` 决定生产发布的唯一 active provider
-- `apps/api` 的 `/llm` 路由接受可选 `provider` 字段做 per-request 覆盖（默认走 `LLM_ACTIVE`），将来按用户偏好路由就靠这个口子
-- **OpenRouter 只是 LLM `provider` 的一个取值，不是代码里的硬编码假设**。加新 provider = 加一个 adapter + 加一组 env，不动现有代码、不动其他 adapter
-
-**分层（key 永不进 DB）**：
-
-| 项 | 比赛生产 |
-|----|---------|
-| API key | env（运营者持有） |
-| base URL | env |
-| model name | env；用户不可修改生产模型 |
-
-用户不自带 key（已定"走我们中转"），所以 DB 只存"用哪个 provider/model"的选择，不存 key 本身。
-
-**STT provider**：`dashscope-realtime`（`GET /stt/providers` 列出已配置 realtime provider）。`WS /stt-realtime` 接受可选 `language=` / query（BCP-47 短码，与 `conversationLang` 对齐）。详见 [ADR 0004](../adr/0004-realtime-stt-parallel-to-batch.md)。
-
-**Realtime 失败**：短退避重连同一 realtime provider；仍失败则停止转写并显示错误。
+按 [`.env.example`](../../.env.example) 配置 iFlytek 或 DashScope，以及 OpenAI 兼容的
+LLM。`STT_ACTIVE` 选择转写提供方，`LLM_ACTIVE` 选择回复模型。提供方长期凭证
+留在本机代理。iFlytek 客户端通过签名 URL 直连，DashScope 由代理转发 16 kHz PCM。
 
 ---
 

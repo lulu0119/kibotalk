@@ -1,54 +1,38 @@
-import { useEffect, useMemo, useState } from 'react'
-import {
-  accountConversationDatabaseName,
-  IndexedDbConversationStorage,
-  type ConversationStorage,
-} from '@kibotalk/conversation'
+import { useEffect, useState } from 'react'
+import type { ConversationStorage } from '@kibotalk/conversation'
 import {
   createCurrentSpeakerEmbeddingStorage,
+  createLocalConversationStorage,
   createSessionSnapshot,
   I18nProvider,
   loadLanguagePrefs,
   persistLanguagePrefs,
   startModelPreload,
-  syncPreferences,
-  useAccount,
-  useCloudConversationStorage,
-  wipeLocalPersonalData,
   useI18n,
   useModelPreloadStatus,
   useProductSession,
   type LanguagePrefs,
-  type AccountSession,
 } from '@kibotalk/app-shared'
 import {
-  AccountPage,
   EnrollmentPage,
   HistoryPage,
   OnboardingPage,
   SessionPage,
   SettingsPage,
-  SyncPendingNotice,
 } from '@kibotalk/pages'
 import { Button, ModelPreloadBadge } from '@kibotalk/ui'
 
 type SetupStage = 'checking' | 'enrollment' | 'product'
-type ProductView = 'session' | 'settings' | 'history' | 'voiceprint' | 'account'
+type ProductView = 'session' | 'settings' | 'history' | 'voiceprint'
 
 function WebProductShell({
   prefs,
   storage,
   onPrefsChange,
-  account,
-  onAccountChange,
-  onDeleteLocalData,
 }: {
   prefs: LanguagePrefs
   storage: ConversationStorage
   onPrefsChange: (prefs: LanguagePrefs) => void
-  account: AccountSession
-  onAccountChange: (account: AccountSession | null) => void
-  onDeleteLocalData: () => Promise<void>
 }) {
   const [view, setView] = useState<ProductView>('session')
   const [enrolled, setEnrolled] = useState(true)
@@ -125,25 +109,11 @@ function WebProductShell({
     )
   }
 
-  if (view === 'account') {
-    return (
-      <AccountPage
-        account={account}
-        showAdminLink
-        onAuthenticated={onAccountChange}
-        onAccountChange={onAccountChange}
-        onBack={() => setView('session')}
-        onDeleteLocalData={onDeleteLocalData}
-      />
-    )
-  }
-
   return (
     <SessionPage
       controller={controller}
       onGoSettings={() => setView('settings')}
       onGoHistory={() => setView('history')}
-      onGoAccount={() => setView('account')}
     />
   )
 }
@@ -160,37 +130,11 @@ function AppContent({
   const [historyOnly, setHistoryOnly] = useState(false)
   const models = useModelPreloadStatus()
   const { t } = useI18n()
-  const accountState = useAccount()
-  const localStorage = useMemo(
-    () => new IndexedDbConversationStorage(
-      accountState.account
-        ? accountConversationDatabaseName(accountState.account.user.id)
-        : undefined,
-    ),
-    [accountState.account?.user.id],
-  )
-  const cloud = useCloudConversationStorage({
-    local: localStorage,
-    userId: accountState.account?.user.id ?? null,
-    onPreferences: (remotePreferences) => {
-      if (
-        remotePreferences
-        && typeof remotePreferences === 'object'
-        && 'conversationLang' in remotePreferences
-        && 'level' in remotePreferences
-      ) {
-        onPrefsChange(remotePreferences as LanguagePrefs)
-      }
-    },
-  })
+  const [storage] = useState(createLocalConversationStorage)
 
   useEffect(() => {
     startModelPreload()
   }, [])
-
-  useEffect(() => {
-    setHistoryOnly(false)
-  }, [accountState.account?.user.id])
 
   useEffect(() => {
     if (!prefs.languagesConfirmed) return
@@ -209,11 +153,6 @@ function AppContent({
       cancelled = true
     }
   }, [prefs.languagesConfirmed])
-
-  useEffect(() => {
-    if (!accountState.account) return
-    void syncPreferences(prefs, cloud.storage).catch(() => {})
-  }, [accountState.account?.user.id, cloud.storage, localStorage, prefs])
 
   const modelsBadge = (
     <ModelPreloadBadge
@@ -274,11 +213,10 @@ function AppContent({
     )
   }
 
-  if (historyOnly && accountState.account) {
+  if (historyOnly) {
     return (
       <HistoryPage
-        storage={cloud.storage ?? localStorage}
-        readOnly={!cloud.storage}
+        storage={storage}
         onBack={() => setHistoryOnly(false)}
       />
     )
@@ -295,37 +233,10 @@ function AppContent({
             <p className="text-sm text-muted-foreground">
               {modelsFailed ? t('preparationFailed') : t('preparing')}
             </p>
-            {modelsFailed && accountState.account ? (
-              <Button variant="soft" onClick={() => setHistoryOnly(true)}>
-                查看本地历史
-              </Button>
-            ) : null}
+            <Button variant="soft" onClick={() => setHistoryOnly(true)}>
+              {t('history')}
+            </Button>
           </div>
-        </div>
-      </>
-    )
-  }
-
-  if (!accountState.account) {
-    return (
-      <>
-        {modelsBadge}
-        <AccountPage
-          account={null}
-          loading={accountState.loading}
-          onAuthenticated={accountState.setAccount}
-          onAccountChange={accountState.setAccount}
-        />
-      </>
-    )
-  }
-
-  if (!cloud.storage) {
-    return (
-      <>
-        {modelsBadge}
-        <div className="flex min-h-dvh items-center justify-center">
-          <p className="text-sm text-muted-foreground">正在打开本地会话…</p>
         </div>
       </>
     )
@@ -336,15 +247,9 @@ function AppContent({
       {modelsBadge}
       <WebProductShell
         prefs={prefs}
-        storage={cloud.storage}
+        storage={storage}
         onPrefsChange={onPrefsChange}
-        account={accountState.account}
-        onAccountChange={accountState.setAccount}
-        onDeleteLocalData={async () => {
-          onPrefsChange(await wipeLocalPersonalData(localStorage))
-        }}
       />
-      <SyncPendingNotice pending={Boolean(cloud.error)} onRetry={cloud.retry} />
     </>
   )
 }

@@ -7,18 +7,12 @@ const api: KiboTalkDesktopApi = {
     getStatus: () => ipcRenderer.invoke(IPC_CHANNEL.onboardingGetStatus),
     open: (view) => ipcRenderer.invoke(IPC_CHANNEL.onboardingOpen, view),
     complete: () => ipcRenderer.invoke(IPC_CHANNEL.onboardingComplete),
-    reset: () => ipcRenderer.invoke(IPC_CHANNEL.onboardingReset),
     resize: (size) => ipcRenderer.invoke(IPC_CHANNEL.onboardingResize, size),
     close: () => ipcRenderer.invoke(IPC_CHANNEL.onboardingClose),
     onCompleted: (callback) => {
       const listener = () => callback()
       ipcRenderer.on(IPC_CHANNEL.onboardingCompletedEvent, listener)
       return () => ipcRenderer.removeListener(IPC_CHANNEL.onboardingCompletedEvent, listener)
-    },
-    onReset: (callback) => {
-      const listener = () => callback()
-      ipcRenderer.on(IPC_CHANNEL.onboardingResetEvent, listener)
-      return () => ipcRenderer.removeListener(IPC_CHANNEL.onboardingResetEvent, listener)
     },
     onViewRequested: (callback) => {
       const listener = (_event: Electron.IpcRendererEvent, view: Parameters<typeof callback>[0]) => callback(view)
@@ -63,23 +57,11 @@ const api: KiboTalkDesktopApi = {
     },
   },
   app: {
-    getVersion: () => ipcRenderer.invoke(IPC_CHANNEL.appGetVersion),
+    getLocalApiToken: () => ipcRenderer.invoke(IPC_CHANNEL.appGetLocalApiToken),
+    previousHistoryUserId: ipcRenderer.sendSync(IPC_CHANNEL.appPreviousHistoryUserId),
     setLaunchAtLogin: (enabled) => ipcRenderer.invoke(IPC_CHANNEL.appSetLaunchAtLogin, enabled),
     requestQuit: () => ipcRenderer.invoke(IPC_CHANNEL.appRequestQuit),
     quitReady: () => ipcRenderer.invoke(IPC_CHANNEL.appQuitReady),
-  },
-  auth: {
-    getAccessToken: () => ipcRenderer.invoke(IPC_CHANNEL.authGetAccessToken),
-    setAccessToken: (token) => ipcRenderer.invoke(IPC_CHANNEL.authSetAccessToken, token),
-    clearAccessToken: () => ipcRenderer.invoke(IPC_CHANNEL.authClearAccessToken),
-    onChanged: (callback) => {
-      const listener = () => callback()
-      ipcRenderer.on(IPC_CHANNEL.authChangedEvent, listener)
-      return () => ipcRenderer.removeListener(IPC_CHANNEL.authChangedEvent, listener)
-    },
-    getAccountCache: () => ipcRenderer.invoke(IPC_CHANNEL.authGetAccountCache),
-    setAccountCache: (value) => ipcRenderer.invoke(IPC_CHANNEL.authSetAccountCache, value),
-    clearAccountCache: () => ipcRenderer.invoke(IPC_CHANNEL.authClearAccountCache),
   },
 }
 

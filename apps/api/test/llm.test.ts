@@ -110,7 +110,7 @@ function upstreamCall(calls: Array<[unknown, RequestInit | undefined]>): [string
   return [toUrl(upstream[0]), upstream[1] as RequestInit]
 }
 
-describe('T3 — real /llm SSE through proxy', () => {
+describe('T3 — real /api/llm SSE through proxy', () => {
   it('streams token SSE events from the upstream provider', async () => {
     setEnv()
     const fetchSpy = mockUpstream(
@@ -120,7 +120,7 @@ describe('T3 — real /llm SSE through proxy', () => {
       }),
     )
 
-    const res = await fetch(`${baseUrl}/llm`, {
+    const res = await fetch(`${baseUrl}/api/llm`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -163,7 +163,7 @@ describe('T3 — real /llm SSE through proxy', () => {
     setEnv()
     mockUpstream(new Response(sseBody(['x', 'y']), { status: 200 }))
 
-    const res = await fetch(`${baseUrl}/llm`, {
+    const res = await fetch(`${baseUrl}/api/llm`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ context: [], level: 'beginner' }),
@@ -201,7 +201,7 @@ describe('T3 — real /llm SSE through proxy', () => {
     })
 
     const controller = new AbortController()
-    const request = fetch(`${baseUrl}/llm`, {
+    const request = fetch(`${baseUrl}/api/llm`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ context: [], level: 'beginner' }),
@@ -220,7 +220,7 @@ describe('T3 — real /llm SSE through proxy', () => {
     for (const k of Object.keys(process.env)) {
       if (k.startsWith('LLM_')) delete process.env[k]
     }
-    const res = await fetch(`${baseUrl}/llm`, {
+    const res = await fetch(`${baseUrl}/api/llm`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ context: [], level: 'beginner' }),

@@ -121,7 +121,7 @@ export default function DirectApi() {
     let rawAccum = ''
     try {
       const snap = readLanguageSnapshot()
-      const res = await fetch('/llm', {
+      const res = await fetch('/api/llm', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({

@@ -7,7 +7,7 @@ import type {
 } from '@kibotalk/conversation'
 import { parseSseStream } from './sse'
 import { extractCandidates } from './partial-json'
-import { authorizedFetch } from './api-runtime'
+import { apiFetch } from './api-runtime'
 
 /** Session snapshot of language prefs (frozen at session start). */
 export type SessionLanguageSnapshot = {
@@ -17,7 +17,7 @@ export type SessionLanguageSnapshot = {
 }
 
 /**
- * Pipeline LLM client that talks to the /llm SSE proxy. The proxy renders the
+ * Pipeline LLM client that talks to the local /api/llm SSE proxy. The proxy renders the
  * reply-suggestions prompt and streams raw LLM JSON tokens; here we incrementally
  * parse the candidate JSON array (exactly 3 objects, or []) and map each completed
  * candidate onto the pipeline's CandidateStreamEvent.
@@ -37,7 +37,6 @@ export class ProxyLlmClient implements LlmClient {
       level: 'beginner',
     },
     private isEnabled: () => boolean = () => true,
-    private conversationSessionId?: string,
   ) {
     this.conversationLang = snapshot.conversationLang
     this.meaningLang = snapshot.meaningLang
@@ -58,7 +57,7 @@ export class ProxyLlmClient implements LlmClient {
       yield { type: 'done' }
       return
     }
-    const res = await authorizedFetch('/api/llm', {
+    const res = await apiFetch('/api/llm', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -66,7 +65,6 @@ export class ProxyLlmClient implements LlmClient {
         level: this.level,
         conversationLang: this.conversationLang,
         meaningLang: this.meaningLang,
-        sessionId: this.conversationSessionId,
       }),
       signal,
     })

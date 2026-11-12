@@ -61,7 +61,6 @@ export const SessionPageRunning: Story = {
       })}
       onGoSettings={noop}
       onGoHistory={noop}
-      onGoAccount={noop}
     />
   ),
 }
@@ -92,7 +91,6 @@ export const IslandPageRunning: Story = {
         contentSide="below"
         onGoSettings={noop}
         onGoHistory={noop}
-        onGoAccount={noop}
       />
     </div>
   ),
