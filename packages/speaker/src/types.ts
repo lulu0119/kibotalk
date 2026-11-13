@@ -3,7 +3,7 @@ import type { Speaker } from '@kibotalk/conversation'
 /**
  * A speaker embedding — a fixed-length float vector produced by enrollment.
  * Opaque to callers; only the speaker implementation knows its dimensionality
- * and distance metric. Persisted to IndexedDB (or Supabase later) as-is.
+ * and distance metric.
  */
 export type Embedding = {
   vector: Float32Array
@@ -28,8 +28,6 @@ export type VerifyResult = {
 /**
  * Speaker verification: enroll once against a passphrase, then verify each
  * audio chunk against the stored embedding to label it `user` or `other`.
- * The real WASM implementation lands in T6; T4 ships a stub `verify` that
- * returns an injected label so the pipeline can be exercised end-to-end.
  */
 export interface SpeakerVerifier {
   enroll(audioStream: AsyncIterable<ArrayBuffer>, passphrase: string): Promise<Embedding>

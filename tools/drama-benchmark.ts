@@ -2,8 +2,6 @@ import { spawn } from 'node:child_process'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { basename, resolve } from 'node:path'
 import ffmpegPath from 'ffmpeg-static'
-import { createVAD } from '../packages/audio/src/vad'
-import { readPcm16Wav } from './lib/read-pcm16-wav'
 
 type SubtitleCue = {
   startMs: number
@@ -22,8 +20,6 @@ type BenchmarkManifest = {
   audioPreparation: string
   cues: SubtitleCue[]
 }
-
-type Interval = { startMs: number; endMs: number }
 
 function argument(name: string, fallback?: string): string {
   const index = process.argv.indexOf(name)
@@ -143,186 +139,7 @@ async function prepare() {
   console.log(`Prepared ${cues.length} subtitle cues in ${output}`)
 }
 
-function overlap(left: Interval, right: Interval): number {
-  return Math.max(0, Math.min(left.endMs, right.endMs) - Math.max(left.startMs, right.startMs))
+if (process.argv[2] !== 'prepare') {
+  throw new Error('Usage: drama-benchmark prepare --media ... --subtitles ... --output ...')
 }
-
-function scoreIntervals(predicted: Interval[], expected: Interval[], durationMs: number) {
-  const bucketMs = 50
-  let truePositive = 0
-  let falsePositive = 0
-  let falseNegative = 0
-  for (let time = 0; time < durationMs; time += bucketMs) {
-    const predictedSpeech = predicted.some(
-      (interval) => time < interval.endMs && time + bucketMs > interval.startMs,
-    )
-    const expectedSpeech = expected.some(
-      (interval) => time < interval.endMs && time + bucketMs > interval.startMs,
-    )
-    if (predictedSpeech && expectedSpeech) truePositive++
-    else if (predictedSpeech) falsePositive++
-    else if (expectedSpeech) falseNegative++
-  }
-  const precision = truePositive / Math.max(1, truePositive + falsePositive)
-  const recall = truePositive / Math.max(1, truePositive + falseNegative)
-  const f1 = (2 * precision * recall) / Math.max(Number.EPSILON, precision + recall)
-  const splitCount = expected.reduce(
-    (total, cue) =>
-      total + Math.max(0, predicted.filter((interval) => overlap(interval, cue) > 0).length - 1),
-    0,
-  )
-  const mergeCount = predicted.reduce(
-    (total, interval) =>
-      total + Math.max(0, expected.filter((cue) => overlap(interval, cue) > 0).length - 1),
-    0,
-  )
-  const boundaryErrors = predicted
-    .map((interval) => {
-      const match = expected
-        .map((cue) => ({ cue, overlapMs: overlap(interval, cue) }))
-        .sort((left, right) => right.overlapMs - left.overlapMs)[0]
-      return match?.overlapMs
-        ? (Math.abs(interval.startMs - match.cue.startMs) +
-            Math.abs(interval.endMs - match.cue.endMs)) /
-            2
-        : null
-    })
-    .filter((error): error is number => error !== null)
-  const boundaryMeanAbsoluteErrorMs =
-    boundaryErrors.reduce((sum, error) => sum + error, 0) /
-    Math.max(1, boundaryErrors.length)
-  const totalScore =
-    f1 -
-    (splitCount + mergeCount) / Math.max(1, expected.length) * 0.03 -
-    Math.min(boundaryMeanAbsoluteErrorMs / 10000, 0.2)
-  return {
-    totalScore,
-    precision,
-    recall,
-    f1,
-    splitCount,
-    mergeCount,
-    boundaryMeanAbsoluteErrorMs,
-  }
-}
-
-async function vadGrid() {
-  const manifestPath = resolve(argument('--manifest'))
-  const output = resolve(argument('--output', `${manifestPath}.vad-grid.json`))
-  const manifest = JSON.parse(
-    await readFile(manifestPath, 'utf8'),
-  ) as BenchmarkManifest
-  const pcm = await readPcm16Wav(manifest.audio)
-
-  const { env } = await import(
-    '@huggingface/transformers'
-  )
-  env.allowLocalModels = false
-  env.allowRemoteModels = true
-  env.useBrowserCache = false
-  env.useFSCache = true
-  env.cacheDir = `${resolve('apps/desktop/resources/models')}/`
-  const { createSileroInfer, SILERO_VARIANTS } = await import(
-    './silero-vad'
-  )
-  const infer = await createSileroInfer(SILERO_VARIANTS[0], 16000)
-  const probabilities: number[] = []
-  for (let offset = 0; offset < pcm.length; offset += 512) {
-    const chunk = new Float32Array(512)
-    chunk.set(pcm.subarray(offset, offset + 512))
-    probabilities.push(await infer(chunk))
-  }
-  const sortedProbabilities = probabilities.toSorted((left, right) => left - right)
-  const percentile = (fraction: number) =>
-    sortedProbabilities[
-      Math.min(
-        sortedProbabilities.length - 1,
-        Math.floor(sortedProbabilities.length * fraction),
-      )
-    ] ?? 0
-  const probabilitySummary = {
-    min: percentile(0),
-    p50: percentile(0.5),
-    p90: percentile(0.9),
-    p95: percentile(0.95),
-    p99: percentile(0.99),
-    max: percentile(1),
-  }
-
-  const expected = manifest.cues.map(({ startMs, endMs }) => ({ startMs, endMs }))
-  const results: Array<Record<string, number>> = []
-  for (const speechThreshold of [0.2, 0.35, 0.5]) {
-    for (const exitThreshold of [0.1, 0.2]) {
-      for (const minSilenceDurationMs of [200, 400, 600]) {
-        for (const minSpeechDurationMs of [200, 320]) {
-          let probabilityIndex = 0
-          let currentStartMs = 0
-          let processedSamples = 0
-          const predicted: Interval[] = []
-          const vad = createVAD(
-            async () => probabilities[probabilityIndex++] ?? 0,
-            {
-              sampleRate: 16000,
-              speechThreshold,
-              exitThreshold,
-              minSilenceDurationMs,
-              minSpeechDurationMs,
-              speechPadMs: 0,
-              newBufferSize: 512,
-            },
-          )
-          vad.on('speech-start', () => {
-            currentStartMs = processedSamples / 16
-          })
-          vad.on('speech-ready', () => {
-            predicted.push({
-              startMs: currentStartMs,
-              endMs: processedSamples / 16,
-            })
-          })
-          for (let index = 0; index < probabilities.length + 20; index++) {
-            await vad.processAudio(new Float32Array(512))
-            processedSamples += 512
-          }
-          results.push({
-            speechThreshold,
-            exitThreshold,
-            minSilenceDurationMs,
-            minSpeechDurationMs,
-            predictedSegments: predicted.length,
-            ...scoreIntervals(predicted, expected, manifest.clipDurationMs),
-          })
-        }
-      }
-    }
-  }
-  results.sort((left, right) => right.totalScore - left.totalScore)
-  await writeFile(
-    output,
-    `${JSON.stringify(
-      {
-        manifest: manifestPath,
-        caveat: manifest.note,
-        audioPreparation: manifest.audioPreparation,
-        probabilitySummary,
-        evaluatedConfigurations: results.length,
-        top: results.slice(0, 10),
-        results,
-      },
-      null,
-      2,
-    )}\n`,
-  )
-  console.table(probabilitySummary)
-  console.table(results.slice(0, 10))
-  console.log(`Wrote ${output}`)
-}
-
-const command = process.argv[2]
-if (command === 'prepare') await prepare()
-else if (command === 'vad-grid') await vadGrid()
-else {
-  throw new Error(
-    'Usage: drama-benchmark <prepare|vad-grid> --media ... --subtitles ... --output ...',
-  )
-}
+await prepare()

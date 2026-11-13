@@ -303,7 +303,7 @@ same/different pair 误作模型结论。
 下一关必须使用下述 KiboTalk 本地 held-out 集；生产迁移还应加入 `unknown`
 区间，而不是强迫每个短片段二选一。
 
-复现命令：
+历史复现命令（适用于使用 Transformers.js 的提交 `6bf30eb`）：
 
 ```bash
 pnpm benchmark:speaker:prepare

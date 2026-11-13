@@ -73,9 +73,7 @@
 | `StickyNoteCard` / `StickyNoteCardPlaceholder` | 单条回复候选的便利贴卡面 | props 直接对齐 `@kibotalk/conversation` 的 `ReplyCandidate`/`ReplySegment`，不重新定义 schema |
 | `StickyNoteStack` | 一轮（或多轮）候选的堆叠列表 | 承载"通知中心式多轮候选"逻辑：新轮在上、旧轮弱化、`maxRounds` 截断、空态/流式骨架 |
 | `IslandBar` + `IslandStatus` / `IslandSeparator` / `IslandToggleButton` / `IslandNavButton` / `IslandDragHandle` | 桌面 Island 的悬浮控制条 | `IslandToggleButton` 只承载 AI 建议等真实开关；运行即转写，不再显示转写开关。容器不可整体拖动，只有带四向箭头的 `IslandDragHandle` 使用 `[-webkit-app-region:drag]` |
-| `StepIndicator` | 声纹录入向导的步骤指示 | 三步：说明 → 录入 → 完成确认 |
 | `SessionListItem` | 历史会话列表的一行 | 由 `HistoryPage` 使用；列表与详情响应式切换，详情显示转写、候选和后台总结状态 |
-| `PillTag` | 通用药丸标签 | 例如"仅桌面端"一类的能力标记 |
 
 ## 5. 谁在用
 

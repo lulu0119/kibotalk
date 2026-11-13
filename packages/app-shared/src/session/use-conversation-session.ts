@@ -77,9 +77,7 @@ export function useConversationSession(params: ConversationSessionParams) {
   const [draft, setDraft] = useState<SessionDraft | null>(null)
   const [candidateRounds, setCandidateRounds] = useState<CandidateRound[]>([])
   const [vadStatus, setVadStatus] = useState<'idle' | 'speech' | 'silence'>('idle')
-  const [mode, setMode] = useState<'auto' | 'checking'>('checking')
   const [confidence, setConfidence] = useState<number | null>(null)
-  const [activeSttPath, setActiveSttPath] = useState<'idle' | 'realtime'>('idle')
   const [lifecycle, setLifecycle] = useState<ProductSessionLifecycle>(
     params.persistSessionLifecycle ? 'restoring' : 'stopped',
   )
@@ -160,7 +158,6 @@ export function useConversationSession(params: ConversationSessionParams) {
     setLoadingModel({ name: model.name })
     setLifecycle('starting')
     setDraft(null)
-    setMode('checking')
     let startedPersistedSession = false
     let capture: SessionCapture | undefined
     try {
@@ -280,8 +277,6 @@ export function useConversationSession(params: ConversationSessionParams) {
       await capture.start()
       signal.throwIfAborted()
       setRecoveredUnexpectedPause(false)
-      setMode('auto')
-      setActiveSttPath('realtime')
       setRunning(true)
       setLifecycle('running')
     } catch (cause) {
@@ -317,7 +312,6 @@ export function useConversationSession(params: ConversationSessionParams) {
         pipelineRef.current = null
         setDraft(null)
         setRunning(false)
-        setActiveSttPath('idle')
         setVadStatus('idle')
         setConfidence(null)
       }
@@ -391,9 +385,7 @@ export function useConversationSession(params: ConversationSessionParams) {
     draft,
     candidateRounds,
     vadStatus,
-    mode,
     confidence,
-    activeSttPath,
     lifecycle,
     activeSession,
     recoveredUnexpectedPause,

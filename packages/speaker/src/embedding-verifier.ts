@@ -6,8 +6,7 @@ import { prepareEnrollmentAudio, trimSpeakerAudio } from './audio-quality'
 
 /**
  * A function that turns a PCM chunk (16kHz mono Float32Array) into a speaker
- * embedding vector. Injected so this package stays free of the model runtime
- * (the product wires WeSpeaker via @huggingface/transformers in a Web Worker).
+ * embedding vector. The app runs Sherpaw in a Web Worker.
  */
 export type EmbedAudio = (pcm: Float32Array) => Promise<Float32Array>
 
@@ -16,12 +15,7 @@ export type EmbeddingVerifierOptions = {
   storage: EmbeddingStorage
   /** Model-calibrated cosine-similarity at/above which a chunk is `user`. */
   threshold: number
-  /** Injectable id generator for deterministic tests. */
-  generateId?: () => string
 }
-
-const defaultGenerateId = (): string =>
-  globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`
 
 /**
  * Real speaker verification built on an injected embedding function.
@@ -38,13 +32,11 @@ export class EmbeddingSpeakerVerifier implements SpeakerVerifier {
   private embedAudio: EmbedAudio
   private storage: EmbeddingStorage
   private threshold: number
-  private generateId: () => string
 
   constructor(opts: EmbeddingVerifierOptions) {
     this.embedAudio = opts.embedAudio
     this.storage = opts.storage
     this.threshold = opts.threshold
-    this.generateId = opts.generateId ?? defaultGenerateId
   }
 
   async enroll(audioStream: AsyncIterable<ArrayBuffer>, passphrase: string): Promise<Embedding> {

@@ -1,5 +1,9 @@
-import { IndexedDbEmbeddingStorage } from '@kibotalk/speaker'
+import type { Embedding, EmbeddingStorage } from '@kibotalk/speaker'
+import { clear, createStore, get, set } from 'idb-keyval'
 import { speakerModelId, speakerModelRevision } from './audio/local-models'
+
+const STORE_NAME = 'embedding'
+const EMBEDDING_KEY = 'enrolled'
 
 const LEGACY_SPEAKER_EMBEDDING_DATABASES = [
   'kibotalk-speaker',
@@ -12,21 +16,31 @@ export const CURRENT_SPEAKER_EMBEDDING_DATABASE = [
   speakerModelRevision,
 ].join(':')
 
-export function createCurrentSpeakerEmbeddingStorage(scope?: string): IndexedDbEmbeddingStorage {
+export function createCurrentSpeakerEmbeddingStorage(scope?: string): EmbeddingStorage {
   const database = scope ? `${CURRENT_SPEAKER_EMBEDDING_DATABASE}:${scope}` : CURRENT_SPEAKER_EMBEDDING_DATABASE
-  return new IndexedDbEmbeddingStorage(database)
+  const store = createStore(database, STORE_NAME)
+
+  return {
+    async load() {
+      const saved = await get<Omit<Embedding, 'vector'> & { vector: number[] }>(EMBEDDING_KEY, store)
+      return saved ? { ...saved, vector: new Float32Array(saved.vector) } : null
+    },
+    save(embedding) {
+      return set(EMBEDDING_KEY, { ...embedding, vector: Array.from(embedding.vector) }, store)
+    },
+    clear() {
+      return clear(store)
+    },
+  }
 }
 
 /**
  * User-initiated voiceprint deletion/reset clears both the current model's
- * namespace and known legacy namespaces. Model migration stays out of the
- * generic speaker core and never attempts to reinterpret incompatible vectors.
+ * namespace and known legacy namespaces.
  */
 export async function clearSpeakerEmbeddingData(): Promise<void> {
   await Promise.all([
     createCurrentSpeakerEmbeddingStorage().clear(),
-    ...LEGACY_SPEAKER_EMBEDDING_DATABASES.map((database) =>
-      new IndexedDbEmbeddingStorage(database).clear(),
-    ),
+    ...LEGACY_SPEAKER_EMBEDDING_DATABASES.map((database) => clear(createStore(database, STORE_NAME))),
   ])
 }

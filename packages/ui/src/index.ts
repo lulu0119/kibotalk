@@ -115,9 +115,7 @@ export {
   IslandDragHandle,
   type IslandBarProps,
 } from './components/product/IslandBar'
-export { StepIndicator, type Step, type StepIndicatorProps } from './components/product/StepIndicator'
 export { LevelMeter, type LevelMeterProps } from './components/product/LevelMeter'
-export { ModelPreloadBadge, type ModelPreloadBadgeProps } from './components/product/ModelPreloadBadge'
 export { WizardScreen, type WizardScreenProps } from './components/product/WizardScreen'
 export {
   DesktopProductWindowFrame,
@@ -125,6 +123,5 @@ export {
 } from './components/product/DesktopProductWindowFrame'
 export { DesktopWindowHeader } from './components/product/DesktopWindowHeader'
 export { SessionListItem, type SessionListItemProps } from './components/product/SessionListItem'
-export { PillTag, type PillTagProps } from './components/product/PillTag'
 export { SearchSelect } from './components/ui/search-select'
 export { ResizableHandle, ResizablePanel, ResizablePanelGroup } from './components/ui/resizable'

@@ -15,7 +15,6 @@
     "eval:report": "vieval report analyze .vieval/reports --format json",
     "benchmark:drama": "tsx tools/drama-benchmark.ts",
     "benchmark:speaker:prepare": "tsx tools/prepare-speaker-trials.ts",
-    "benchmark:speaker": "tsx tools/speaker-model-benchmark.ts",
     "test": "turbo test",
     "typecheck": "turbo typecheck"
   },
@@ -36,9 +35,7 @@
     "turbo": "^2.5.0",
     "typescript": "^5.7.0",
     "vieval": "0.0.12",
-    "vite": "^6.4.3",
-    "@huggingface/transformers": "^3.8.1",
-    "@kibotalk/audio": "workspace:*"
+    "vite": "^6.4.3"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

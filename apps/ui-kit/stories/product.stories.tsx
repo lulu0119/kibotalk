@@ -7,7 +7,6 @@ import {
   StopDuotoneIcon,
 } from '@kibotalk/ui/icons'
 import {
-  Badge,
   Button,
   DesktopProductWindowFrame,
   DesktopWindowHeader,
@@ -18,11 +17,7 @@ import {
   IslandStatus,
   IslandToggleButton,
   LevelMeter,
-  ModelPreloadBadge,
-  PillTag,
-  ScrollArea,
   SessionListItem,
-  StepIndicator,
   StickyNoteCard,
   StickyNoteCardPlaceholder,
   StickyNoteStack,
@@ -98,35 +93,6 @@ export const LevelMeterShowcase: Story = {
   ),
 }
 
-export const StepIndicatorShowcase: Story = {
-  render: () => (
-    <div className="w-full max-w-md space-y-6">
-      <StepIndicator
-        current={0}
-        steps={[{ label: '语言' }, { label: '声纹' }, { label: '完成' }]}
-      />
-      <StepIndicator
-        current={1}
-        steps={[{ label: '语言' }, { label: '声纹' }, { label: '完成' }]}
-      />
-      <StepIndicator
-        current={2}
-        steps={[{ label: '语言' }, { label: '声纹' }, { label: '完成' }]}
-      />
-    </div>
-  ),
-}
-
-export const PillTagShowcase: Story = {
-  render: () => (
-    <div className="flex flex-wrap gap-3">
-      <PillTag>实时转写</PillTag>
-      <PillTag>00:07</PillTag>
-      <Badge>Badge 对照</Badge>
-    </div>
-  ),
-}
-
 export const SessionListItemShowcase: Story = {
   render: () => (
     <div className="w-full max-w-sm">
@@ -145,15 +111,6 @@ export const WizardScreenShowcase: Story = {
         <Button>下一步</Button>
       </div>
     </WizardScreen>
-  ),
-}
-
-export const ModelPreloadBadgeShowcase: Story = {
-  render: () => (
-    <div className="relative h-40 w-full">
-      <ModelPreloadBadge progress={0.64} done={false} />
-      <ModelPreloadBadge progress={0.64} done={false} error />
-    </div>
   ),
 }
 
