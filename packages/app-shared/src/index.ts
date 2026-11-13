@@ -1,19 +1,20 @@
 export { AudioSource } from './audio/audio-source'
 export type { AudioSourceOptions } from './audio/audio-source'
-export { attachAudioIoSpans } from './audio/io-spans'
-export { createSileroInfer, SILERO_VARIANTS } from './audio/silero-vad'
-export type { SileroVariant } from './audio/silero-vad'
-export { createWorkerEmbedAudio, configureModelSource } from './audio/speaker-embed'
+export { createWorkerEmbedAudio } from './audio/speaker-embed'
 export {
-  useBundledModels,
-  useHuggingFaceModels,
-  SPEAKER_MODEL_DTYPE,
-  SPEAKER_MODEL_ID,
-  SPEAKER_MODEL_REVISION,
-} from './audio/model-source'
+  downloadTranscriptionModel,
+  modelIsDownloaded,
+  prepareBaseSpeechModels,
+  saveTranscriptionModel,
+  selectTranscriptionModel,
+  transcriptionModels,
+  loadModelFile,
+  speakerModelFile,
+} from './audio/local-models'
+export type { TranscriptionModel } from './audio/local-models'
+export { browserReplyModel, createBrowserReplyModel, createReplyClient } from './reply-model'
+export type { SessionLanguageSnapshot } from './reply-model'
 
-export { startModelPreload, useModelPreloadStatus } from './model-preload'
-export type { ModelLoadState, ModelPreloadStatus } from './model-preload'
 export {
   clearSpeakerEmbeddingData,
   createCurrentSpeakerEmbeddingStorage,
@@ -21,26 +22,8 @@ export {
 } from './speaker-embedding-storage'
 export { shouldShowSessionError } from './session/session-presentation'
 
-export { parseSseStream } from './sse'
-export type { SseMessage } from './sse'
 export { createLocalConversationStorage } from './local-conversation-storage'
 export { extractCandidates, extractCompleteObjects } from './partial-json'
-export {
-  defaultSttProvider,
-  fetchSttProviders,
-} from './stt-providers'
-export type { SttProvider } from './stt-providers'
-export {
-  connectRealtimeStt,
-  connectRealtimeSttWithRetry,
-  isTranscriptionFailed,
-  RealtimeSttError,
-} from './realtime-stt-client'
-export type { RealtimeSttClient, RealtimeSttHandlers } from './realtime-stt-client'
-export { finalizedTurnFromRealtimeSegments } from './session/realtime-turn'
-export type { TranscribedAudioSegment } from './session/realtime-turn'
-export { ProxyLlmClient } from './proxy-clients'
-export type { SessionLanguageSnapshot } from './proxy-clients'
 
 export {
   defaultAppConfig,
@@ -83,3 +66,4 @@ export type {
   ProductSessionController,
   ProductSessionParams,
 } from './session/use-product-session'
+export { createSpeechEngine, type SpeechEngine } from './audio/speech-engine'

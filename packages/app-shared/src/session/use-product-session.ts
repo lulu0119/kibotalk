@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ConversationSessionSnapshot, ConversationStorage } from '@kibotalk/conversation'
 import { defaultAppConfig } from '../config'
-import type { SessionLanguageSnapshot } from '../proxy-clients'
+import type { SessionLanguageSnapshot } from '../reply-model'
+import type { ReplyTextStream } from '@kibotalk/llm'
 import {
   useConversationSession,
   type CandidateRound,
@@ -15,8 +16,7 @@ export type ProductSessionParams = {
   stopSystemAudioStream?: () => Promise<void>
   /** Defaults to an in-memory session (playground behavior); product apps pass a persisted `ConversationStorage`. */
   storage?: ConversationStorage
-  /** Reply-suggestion rounds kept visible on the stage. */
-  candidateRoundsMax?: number
+  replyStream?: ReplyTextStream
 }
 
 /**
@@ -31,21 +31,19 @@ export function useProductSession({
   getSystemAudioStream,
   stopSystemAudioStream,
   storage,
-  candidateRoundsMax = 3,
+  replyStream,
 }: ProductSessionParams) {
   const [replyEnabled, setReplyEnabled] = useState(true)
   const previousLifecycleRef = useRef<ProductSessionLifecycle>('restoring')
 
   const session = useConversationSession({
     speechThreshold: defaultAppConfig.vad.speechThreshold,
-    exitThreshold: defaultAppConfig.vad.exitThreshold,
     minSilenceDurationMs: defaultAppConfig.vad.minSilenceDurationMs,
     minSpeechDurationMs: defaultAppConfig.vad.minSpeechDurationMs,
-    vadVariantId: defaultAppConfig.vadVariantId,
     pauseMs: defaultAppConfig.aggregator.pauseMs,
     mergeMaxMs: defaultAppConfig.aggregator.maxMs,
     speakerThreshold: defaultAppConfig.speakerThreshold,
-    candidateRoundsMax,
+    replyStream,
     sttEnabled: true,
     replyEnabled,
     languageSnapshot,

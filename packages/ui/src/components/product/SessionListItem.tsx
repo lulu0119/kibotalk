@@ -1,4 +1,4 @@
-import { ChevronRight } from 'lucide-react'
+import { AltArrowRightIcon } from '../../icons'
 import { cn } from '../../lib/utils'
 
 export type SessionListItemProps = {
@@ -31,7 +31,7 @@ export function SessionListItem({ title, subtitle, current, onClick, className }
         <div className="truncate text-sm font-bold">{title}</div>
         <div className="mt-0.5 text-xs text-foreground/40">{subtitle}</div>
       </div>
-      {!current ? <ChevronRight className="size-4 shrink-0 text-foreground/40" /> : null}
+      {!current ? <AltArrowRightIcon className="size-4 shrink-0 text-foreground/40" /> : null}
     </div>
   )
 }

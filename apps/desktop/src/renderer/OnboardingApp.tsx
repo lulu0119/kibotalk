@@ -21,7 +21,6 @@ import type {
 } from '../shared/ipc'
 
 type Gate = 'booting' | 'setup' | 'product'
-type SetupStage = 'checking' | 'enrollment'
 
 function DesktopWindowContent({
   prefs,
@@ -32,15 +31,14 @@ function DesktopWindowContent({
 }) {
   const { t } = useI18n()
   const [gate, setGate] = useState<Gate>('booting')
-  const [setupStage, setSetupStage] = useState<SetupStage>('checking')
   const [view, setView] = useState<ProductWindowView>('settings')
-  const [enrolled, setEnrolled] = useState(false)
+  const [enrolled, setEnrolled] = useState<boolean | null>(null)
   const [sessionActive, setSessionActive] = useState(false)
   const [activeSessionId, setActiveSessionId] = useState<string>()
   const [microphonePermission, setMicrophonePermission] =
     useState<MediaAccessStatus>('unknown')
   const [screenPermission, setScreenPermission] = useState<MediaAccessStatus>('unknown')
-  const [storage] = useState(createLocalConversationStorage)
+  const [storage] = useState(() => createLocalConversationStorage(window.kibotalk.app.previousHistoryUserId))
 
   const refreshSessionState = useCallback(async () => {
     const session = await storage.getActiveSession()
@@ -80,27 +78,24 @@ function DesktopWindowContent({
   }, [refreshSessionState])
 
   useEffect(() => {
-    if (gate !== 'setup' || !prefs.languagesConfirmed) return
+    if (gate !== 'setup') return
     let cancelled = false
     void createCurrentSpeakerEmbeddingStorage()
       .load()
       .then((embedding) => {
-        if (cancelled) return
-        setEnrolled(!!embedding)
-        setSetupStage('enrollment')
+        if (!cancelled) setEnrolled(!!embedding)
       })
       .catch(() => {
-        if (!cancelled) setSetupStage('enrollment')
+        if (!cancelled) setEnrolled(false)
       })
     return () => {
       cancelled = true
     }
-  }, [gate, prefs.languagesConfirmed])
+  }, [gate])
 
   useEffect(() => {
     if (gate === 'product' && !prefs.languagesConfirmed) {
       setGate('setup')
-      setSetupStage('checking')
     }
   }, [gate, prefs.languagesConfirmed])
 
@@ -124,9 +119,7 @@ function DesktopWindowContent({
     if (!root) return
     let lastKey = ''
     const report = () => {
-      const wizard = root.firstElementChild as HTMLElement | null
-      if (!wizard) return
-      const rect = wizard.getBoundingClientRect()
+      const rect = root.getBoundingClientRect()
       const size = { width: Math.ceil(rect.width), height: Math.ceil(rect.height) }
       const key = `${size.width}x${size.height}`
       if (size.width < 1 || size.height < 1 || key === lastKey) return
@@ -134,13 +127,12 @@ function DesktopWindowContent({
       void window.kibotalk.onboarding.resize(size)
     }
     const observer = new ResizeObserver(report)
-    const wizard = root.firstElementChild
-    if (wizard) observer.observe(wizard)
+    observer.observe(root)
     report()
     return () => observer.disconnect()
-  }, [gate, prefs.languagesConfirmed, setupStage])
+  }, [gate])
 
-  if (gate === 'booting') {
+  if (gate === 'booting' || (gate === 'setup' && enrolled === null)) {
     return (
       <WizardScreen embedded className="text-center">
         <p className="text-sm text-muted-foreground">{t('preparing')}</p>
@@ -163,10 +155,8 @@ function DesktopWindowContent({
       return (
         <EnrollmentPage
           conversationLang={prefs.conversationLang}
-          enrolled={enrolled}
-          initialStep="intro"
           embedded
-          onEnrolled={() => setEnrolled(true)}
+          requestMicrophone={window.kibotalk.permissions.requestMicrophone}
           onEnterSession={() => setView('settings')}
         />
       )
@@ -174,6 +164,7 @@ function DesktopWindowContent({
     return (
       <SettingsPage
         platform="desktop"
+        replyModelSettings={window.kibotalk.replyModel}
         embedded
         prefs={prefs}
         sessionActive={sessionActive}
@@ -196,42 +187,17 @@ function DesktopWindowContent({
     )
   }
 
-  if (!prefs.languagesConfirmed) {
-    return (
-      <OnboardingPage
-        embedded
-        uiLang={prefs.uiLang}
-        conversationLang={prefs.conversationLang}
-        level={prefs.level}
-        onUiLangChange={(uiLang) => onPrefsChange({ ...prefs, uiLang })}
-        onConversationLangChange={(conversationLang) =>
-          onPrefsChange({ ...prefs, conversationLang })
-        }
-        onLevelChange={(level) => onPrefsChange({ ...prefs, level })}
-        onRequestPermissions={async () => {
-          await window.kibotalk.permissions.requestMicrophone()
-          await window.kibotalk.permissions.requestScreenRecording()
-        }}
-        onConfirm={() => onPrefsChange({ ...prefs, languagesConfirmed: true })}
-      />
-    )
-  }
-
-  if (setupStage === 'checking') {
-    return (
-      <WizardScreen embedded className="text-center">
-        <p className="text-sm text-muted-foreground">{t('preparing')}</p>
-      </WizardScreen>
-    )
-  }
-
   return (
-    <EnrollmentPage
+    <OnboardingPage
       embedded
-      conversationLang={prefs.conversationLang}
-      enrolled={enrolled}
-      onEnrolled={() => setEnrolled(true)}
-      onEnterSession={() => void window.kibotalk.onboarding.complete()}
+      prefs={prefs}
+      enrolled={!!enrolled}
+      requestMicrophone={window.kibotalk.permissions.requestMicrophone}
+      onPrefsChange={onPrefsChange}
+      onComplete={() => {
+        onPrefsChange({ ...prefs, languagesConfirmed: true })
+        void window.kibotalk.onboarding.complete()
+      }}
     />
   )
 }

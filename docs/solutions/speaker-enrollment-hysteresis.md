@@ -59,3 +59,8 @@ pnpm --filter @kibotalk/desktop verify:speaker -- \
 Hysteresis reduces label chatter; it does not replace dataset calibration.
 Threshold and margin must be evaluated on held-out target/non-target recordings
 grouped by language, duration, device, and noise.
+
+With Sherpaw CAM++, resampled AudioWorklet PCM can briefly exceed the range
+from −1 to 1 and cause an otherwise usable enrollment to fail. The speaker
+worker clamps PCM at the extractor boundary. The issue reproduced with a
+48 kHz microphone fixture resampled to 16 kHz in Chrome.

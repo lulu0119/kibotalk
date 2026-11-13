@@ -8,16 +8,9 @@ import type {
   PipelineState,
 } from './types'
 import type { ConversationTurn, ReplyCandidate } from '@kibotalk/conversation'
-import type { Span } from '@kibotalk/observability'
-import {
-  IOAttributes,
-  IOEvents,
-  IOSpanNames,
-  IOSubsystems,
-  getActiveTurnSpan,
-  setActiveTurnSpan,
-  startSpan,
-} from '@kibotalk/observability'
+import { beginSpan, noopTraceSink, trackPath, type TraceSink, type TraceSpan } from '@proj-airi/trace-kit'
+import { AgentAttributes, AgentNames, AgentTracks } from '@proj-airi/trace-kit/agent'
+import { REPLY_READY_MS } from './reply-trace'
 import { envNumber } from './env'
 
 const defaultGenerateId = (): string =>
@@ -53,11 +46,14 @@ export class Pipeline {
   private config: Required<import('./types').PipelineConfig>
   private generateId: () => string
   private sleep: (ms: number) => Promise<void>
-  private currentLlm: { abort: AbortController; turnId: string; span?: Span } | null = null
-  private turnSpans = new Map<string, Span>()
+  private currentLlm: { abort: AbortController; turnId: string; span: TraceSpan; turn: TraceSpan } | null = null
+  private trace: TraceSink
+  private shouldGenerateReply: () => boolean
 
   constructor(deps: PipelineDeps) {
     this.llm = deps.llm
+    this.trace = deps.trace ?? noopTraceSink
+    this.shouldGenerateReply = deps.shouldGenerateReply ?? (() => true)
     this.conversation = deps.conversation
     const cfg = deps.config ?? {}
     this.config = {
@@ -97,14 +93,11 @@ export class Pipeline {
     this.setState(input.speaker === 'other' ? 'OTHER_SPEAKING' : 'USER_SPEAKING')
 
     const turnId = this.generateId()
-    const turnSpan = startSpan(IOSpanNames.InteractionTurn, {
-      attrs: {
-        [IOAttributes.TurnId]: turnId,
-        ...(input.text ? { [IOAttributes.ASRText]: input.text } : {}),
-      },
+    const turnSpan = beginSpan(this.trace, {
+      track: trackPath(AgentTracks.Turn, { agent: 'coach' }),
+      name: AgentNames.ChatTurn,
+      ids: { turn: turnId, actor: input.speaker },
     })
-    this.turnSpans.set(turnId, turnSpan)
-    setActiveTurnSpan(turnSpan)
 
     const sttFailed = input.sttFailed === true
     await this.commitTurn({
@@ -124,12 +117,8 @@ export class Pipeline {
     const aborted = this.currentLlm
     aborted.abort.abort()
     this.currentLlm = null
-    aborted.span?.setAttribute(IOAttributes.ASRAbort, true)
-    aborted.span?.end()
-    const turnSpan = this.turnSpans.get(aborted.turnId)
-    turnSpan?.end()
-    this.turnSpans.delete(aborted.turnId)
-    if (getActiveTurnSpan() === turnSpan) setActiveTurnSpan(undefined)
+    aborted.span.end({ status: 'cancelled' })
+    aborted.turn.end({ status: 'cancelled' })
     this.emit({ type: 'llmAborted', turnId: aborted.turnId })
   }
 
@@ -141,7 +130,7 @@ export class Pipeline {
     endedAt: number
     sttFailed: boolean
     interrupted?: boolean
-    turnSpan: Span
+    turnSpan: TraceSpan
   }): Promise<void> {
     const turn: ConversationTurn = {
       id: args.turnId,
@@ -151,9 +140,6 @@ export class Pipeline {
       endedAt: args.endedAt,
       ...(args.sttFailed ? { sttFailed: true } : {}),
     }
-    if (args.text) {
-      args.turnSpan.setAttribute(IOAttributes.ASRText, args.text)
-    }
     await this.conversation.appendTurn(turn)
     this.emit({ type: 'turnAppended', turn })
 
@@ -161,46 +147,43 @@ export class Pipeline {
       this.emit({ type: 'sttFailed', turnId: args.turnId })
     }
 
-    if (!args.interrupted) {
-      void this.runLlm(args.turnId, args.turnSpan).catch(() => {})
+    if (!args.interrupted && this.shouldGenerateReply()) {
+      void this.runLlm(args.turnId, args.turnSpan, args.endedAt).catch(() => {})
     } else {
       args.turnSpan.end()
-      this.turnSpans.delete(args.turnId)
-      if (getActiveTurnSpan() === args.turnSpan) setActiveTurnSpan(undefined)
       this.setState('IDLE')
     }
   }
 
-  private async runLlm(turnId: string, turnSpan: Span): Promise<void> {
-    const context = (await this.conversation.loadActiveSession()) ?? []
+  private async runLlm(turnId: string, turnSpan: TraceSpan, speechEndedAt: number): Promise<void> {
     const controller = new AbortController()
-    const llmSpan = startSpan(IOSpanNames.LLMInference, {
+    const llmSpan = beginSpan(this.trace, {
+      track: trackPath(AgentTracks.LLM, { agent: 'coach' }),
+      name: AgentNames.ModelRequest,
       parent: turnSpan,
-      attrs: {
-        [IOAttributes.Subsystem]: IOSubsystems.LLM,
-        [IOAttributes.TurnId]: turnId,
-      },
+      ids: { turn: turnId },
     })
-    this.currentLlm = { abort: controller, turnId, span: llmSpan }
+    this.currentLlm = { abort: controller, turnId, span: llmSpan, turn: turnSpan }
     this.setState('LLM_STREAMING')
     this.emit({ type: 'candidatesStreaming', turnId })
 
     const candidates: ReplyCandidate[] = []
     const partials: Map<number, Partial<Record<CandidateField, string>>> = new Map()
-    let firstTokenMarked = false
+    let ttftMs: number | undefined
     const llmStart = performance.now()
 
     const streamOnce = async (): Promise<'done' | 'aborted' | 'failed'> => {
       try {
+        controller.signal.throwIfAborted()
+        const context = (await this.conversation.loadActiveSession()) ?? []
+        controller.signal.throwIfAborted()
         for await (const ev of this.llm.streamCandidates(context, controller.signal)) {
           if (controller.signal.aborted) return 'aborted'
-          if (!firstTokenMarked && ev.type === 'candidate-delta') {
-            firstTokenMarked = true
-            const ttftMs = performance.now() - llmStart
-            llmSpan.addEvent(IOEvents.LLMFirstToken, {
-              [IOAttributes.LLM_TTFT]: ttftMs,
-            })
-            llmSpan.setAttribute(IOAttributes.LLM_TTFT, ttftMs)
+          if (ttftMs === undefined && (ev.type === 'first-token' || ev.type === 'candidate-delta')) {
+            ttftMs = performance.now() - llmStart
+            const attrs = { [AgentAttributes.LLMTtftMs]: ttftMs }
+            llmSpan.instant(AgentNames.LLMFirstChunk, attrs)
+            llmSpan.update(attrs)
           }
           this.handleStreamEvent(ev, turnId, candidates, partials)
           if (ev.type === 'done') break
@@ -217,8 +200,9 @@ export class Pipeline {
       // Rule 7: retry once.
       candidates.length = 0
       partials.clear()
-      firstTokenMarked = false
+      ttftMs = undefined
       await this.sleep(this.config.llmRetryBackoffMs)
+      if (controller.signal.aborted) return
       this.emit({ type: 'candidatesStreaming', turnId })
       outcome = await streamOnce()
     }
@@ -229,18 +213,17 @@ export class Pipeline {
 
     this.currentLlm = null
     if (outcome === 'done') {
-      llmSpan.setAttribute(IOAttributes.LLMTextLength, candidates.length)
-      llmSpan.end()
+      llmSpan.end({ attrs: {
+        ...(ttftMs === undefined ? {} : { [AgentAttributes.LLMTtftMs]: ttftMs }),
+        ...(candidates.length === 3 && this.shouldGenerateReply()
+          ? { [REPLY_READY_MS]: Math.max(0, Date.now() - speechEndedAt) } : {}),
+      } })
       turnSpan.end()
-      this.turnSpans.delete(turnId)
-      if (getActiveTurnSpan() === turnSpan) setActiveTurnSpan(undefined)
       this.emit({ type: 'candidatesDone', turnId, candidates })
       this.setState('IDLE')
     } else if (outcome === 'failed') {
-      llmSpan.end()
-      turnSpan.end()
-      this.turnSpans.delete(turnId)
-      if (getActiveTurnSpan() === turnSpan) setActiveTurnSpan(undefined)
+      llmSpan.end({ status: 'error' })
+      turnSpan.end({ status: 'error' })
       this.emit({ type: 'llmFailed', turnId })
       this.setState('IDLE')
     }
@@ -255,6 +238,8 @@ export class Pipeline {
     partials: Map<number, Partial<Record<CandidateField, string>>>,
   ): void {
     switch (ev.type) {
+      case 'first-token':
+        return
       case 'candidate-start':
         partials.set(ev.index, {})
         return

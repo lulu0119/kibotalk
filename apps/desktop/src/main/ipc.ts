@@ -7,6 +7,7 @@ import {
   type ProductWindowView,
 } from '../shared/ipc'
 import { readConfig, updateConfig } from './config'
+import { registerReplyModelHandlers } from './reply-model'
 import {
   checkMicrophonePermission,
   checkScreenRecordingPermission,
@@ -118,13 +119,5 @@ export function registerIpcHandlers(params: {
   ipcMain.on(IPC_CHANNEL.appPreviousHistoryUserId, (event) => {
     event.returnValue = previousHistoryUserId()
   })
-  ipcMain.handle(IPC_CHANNEL.appGetLocalApiToken, async () => {
-    const response = await fetch('http://127.0.0.1:8787/api/local-token', {
-      signal: AbortSignal.timeout(3000),
-    })
-    if (!response.ok) throw new Error('Local KiboTalk proxy is unavailable')
-    const { token } = await response.json() as { token?: string }
-    if (!token) throw new Error('Local KiboTalk proxy returned no token')
-    return token
-  })
+  registerReplyModelHandlers()
 }

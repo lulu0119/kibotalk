@@ -2,6 +2,7 @@ import type { Configuration } from 'electron-builder'
 import { execFile } from 'node:child_process'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
+import { baseSpeechModelFiles } from '@kibotalk/app-shared/local-models'
 
 const execFileAsync = promisify(execFile)
 
@@ -59,9 +60,9 @@ const config: Configuration = {
   artifactName: '${productName}-${version}-${arch}.${ext}',
   files: ['out/**/*'],
   electronLanguages: ['en', 'en_GB', 'ja', 'zh_CN', 'zh_TW'],
-  // Populated by `pnpm download-models` — bundled models, not runtime-fetched (see `src/main/model-protocol.ts`).
   extraResources: [
-    { from: 'resources/bundle-models', to: 'models' },
+    { from: 'resources/bundle-models', to: 'models', filter: baseSpeechModelFiles.map((file) => file.bundledName) },
+    { from: '../../THIRD_PARTY_NOTICES.md', to: 'THIRD_PARTY_NOTICES.md' },
     { from: 'build/tray/kibotalkTemplate.png', to: 'tray/kibotalkTemplate.png' },
     { from: 'build/tray/kibotalkTemplate@2x.png', to: 'tray/kibotalkTemplate@2x.png' },
   ],

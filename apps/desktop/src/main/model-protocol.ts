@@ -1,38 +1,34 @@
 import { existsSync } from 'node:fs'
-import { join, normalize } from 'node:path'
+import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { app, net, protocol } from 'electron'
+import { baseSpeechModelFiles, BUNDLED_MODEL_SCHEME } from '@kibotalk/app-shared/local-models'
 
-/** Matches `BUNDLED_MODELS_HOST` in `packages/app-shared/src/audio/model-source.ts`. */
-export const MODEL_PROTOCOL_SCHEME = 'kibotalk-model'
-
-/** Where `scripts/download-models.ts` writes files and `electron-builder.config.ts`'s `extraResources` bundles them from/to. */
-function modelsRoot(): string {
-  return app.isPackaged ? join(process.resourcesPath, 'models') : join(app.getAppPath(), 'resources/models')
+export function registerModelProtocolScheme() {
+  protocol.registerSchemesAsPrivileged([{
+    scheme: BUNDLED_MODEL_SCHEME,
+    privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true },
+  }])
 }
 
-/**
- * Must run before `app.whenReady()` — Electron only allows privileged
- * custom schemes (ones that support `fetch()`, like a normal HTTP origin)
- * to be registered at module load time.
- */
-export function registerModelProtocolScheme(): void {
-  protocol.registerSchemesAsPrivileged([
-    { scheme: MODEL_PROTOCOL_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
-  ])
-}
-
-/**
- * Serves `<modelsRoot>/<model>/<file>` for `kibotalk-model://app/<model>/<file>`
- * — see `useBundledModels` in `packages/app-shared/src/audio/model-source.ts`,
- * which points transformers.js's remote-model fetch at this scheme instead of
- * the real Hugging Face Hub whenever the renderer runs a production build.
- */
-export function registerModelProtocolHandler(): void {
-  const root = modelsRoot()
-  protocol.handle(MODEL_PROTOCOL_SCHEME, (request) => {
-    const relativePath = normalize(decodeURIComponent(new URL(request.url).pathname)).replace(/^(\.\.[/\\])+/, '')
-    const filePath = join(root, relativePath)
-    if (!filePath.startsWith(root) || !existsSync(filePath)) return new Response('Not found', { status: 404 })
-    return net.fetch(`file://${filePath}`)
+export function registerModelProtocolHandler() {
+  const directory = app.isPackaged ? join(process.resourcesPath, 'models') : join(app.getAppPath(), 'resources/bundle-models')
+  const allowed = new Set<string>(baseSpeechModelFiles.map((file) => file.bundledName))
+  protocol.handle(BUNDLED_MODEL_SCHEME, async (request) => {
+    const url = new URL(request.url)
+    const name = url.pathname.slice(1)
+    if (request.method !== 'GET' || url.host !== 'app' || !allowed.has(name)) {
+      return new Response(null, { status: 404 })
+    }
+    const path = join(directory, name)
+    if (!existsSync(path)) return new Response(null, { status: 404 })
+    const response = await net.fetch(pathToFileURL(path).href)
+    return new Response(response.body, {
+      status: response.status,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Content-Type': 'application/octet-stream',
+      },
+    })
   })
 }

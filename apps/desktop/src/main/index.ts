@@ -11,19 +11,19 @@ let islandWindow: BrowserWindow | null = null
 let trayController: ReturnType<typeof createTrayController> | null = null
 let quitConfirmed = false
 
+registerModelProtocolScheme()
+
 function finishQuit() {
   quitConfirmed = true
   trayController?.destroy()
   app.quit()
 }
 
-registerModelProtocolScheme()
-
 app.whenReady().then(async () => {
+  registerModelProtocolHandler()
   electronApp.setAppUserModelId('com.kibotalk.desktop')
   app.on('browser-window-created', (_event, window) => optimizer.watchWindowShortcuts(window))
 
-  registerModelProtocolHandler()
   registerIpcHandlers({
     getIslandWindow: () => islandWindow,
     onSessionState: (state) => trayController?.updateState(state),

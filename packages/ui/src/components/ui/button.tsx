@@ -5,25 +5,23 @@ import { cva, type VariantProps } from 'class-variance-authority'
 import { cn } from '../../lib/utils'
 
 const buttonVariants = cva(
-  'inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-full text-sm font-bold tracking-tight transition-[filter] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0',
+  'inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md border border-transparent text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0',
   {
     variants: {
       variant: {
-        /** The one primary CTA surface — big and small buttons share the same gradient, no extra "important" stop. */
-        default: 'bg-surface-active text-primary-foreground shadow-tier1-lg hover:brightness-[1.02] active:brightness-[0.97]',
-        destructive: 'bg-destructive text-destructive-foreground shadow hover:bg-destructive/90',
-        outline: 'border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground',
-        secondary: 'bg-secondary text-secondary-foreground shadow-sm hover:bg-secondary/80',
-        /** Always-visible soft yellow tint — the "小btn" secondary action (not the transparent-until-hover shadcn ghost). */
-        soft: 'bg-accent text-accent-foreground shadow-tier0 hover:bg-primary-soft-strong active:brightness-[0.97]',
+        default: 'bg-primary text-primary-foreground hover:bg-primary/85 active:bg-primary/75',
+        destructive: 'bg-destructive text-destructive-foreground hover:bg-destructive/90 active:bg-destructive/80',
+        outline: 'border-input bg-background text-foreground hover:bg-muted active:bg-secondary',
+        secondary: 'bg-secondary text-secondary-foreground hover:bg-secondary/80 active:bg-secondary/65',
+        soft: 'bg-accent text-accent-foreground hover:bg-accent/80 active:bg-accent/65',
         ghost: 'hover:bg-accent hover:text-accent-foreground',
-        link: 'text-primary underline-offset-4 hover:underline',
+        link: 'text-accent-foreground underline-offset-4 hover:underline',
       },
       size: {
-        default: 'h-11 px-5 py-2',
-        sm: 'h-10 px-3.5 text-xs',
-        lg: 'h-11 px-6 text-base',
-        icon: 'h-11 w-11 rounded-md',
+        default: 'h-10 px-4 py-2',
+        sm: 'h-9 px-3',
+        lg: 'h-11 px-6',
+        icon: 'size-10',
       },
     },
     defaultVariants: {

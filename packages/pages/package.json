@@ -19,8 +19,8 @@
     "@kibotalk/pipeline": "workspace:*",
     "@kibotalk/speaker": "workspace:*",
     "@kibotalk/ui": "workspace:*",
-    "lucide-react": "^1.26.0",
-    "react": "^19.2.8"
+    "react": "^19.2.8",
+    "@kibotalk/llm": "workspace:*"
   },
   "devDependencies": {
     "@types/react": "^19.2.17"

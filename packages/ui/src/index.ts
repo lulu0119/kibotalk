@@ -126,3 +126,5 @@ export {
 export { DesktopWindowHeader } from './components/product/DesktopWindowHeader'
 export { SessionListItem, type SessionListItemProps } from './components/product/SessionListItem'
 export { PillTag, type PillTagProps } from './components/product/PillTag'
+export { SearchSelect } from './components/ui/search-select'
+export { ResizableHandle, ResizablePanel, ResizablePanelGroup } from './components/ui/resizable'

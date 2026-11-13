@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import {
   EmbeddingSpeakerVerifier,
   EnrollmentAudioError,
@@ -8,24 +8,14 @@ import {
   AudioSource,
   createCurrentSpeakerEmbeddingStorage,
   createWorkerEmbedAudio,
+  loadModelFile,
+  speakerModelFile,
   PASSPHRASE_BY_LANG,
   defaultAppConfig,
   useI18n,
 } from '@kibotalk/app-shared'
-import { Button, LevelMeter, StepIndicator, toast, WizardScreen } from '@kibotalk/ui'
-import { ArrowRight, Loader2, Mic, RotateCcw, Square } from 'lucide-react'
-
-type WizardStep = 'intro' | 'record' | 'done'
-
-function concatPcm(chunks: Float32Array[]): Float32Array {
-  const out = new Float32Array(chunks.reduce((n, c) => n + c.length, 0))
-  let offset = 0
-  for (const c of chunks) {
-    out.set(c, offset)
-    offset += c.length
-  }
-  return out
-}
+import { Button, LevelMeter, WizardScreen } from '@kibotalk/ui'
+import { ArrowRightIcon, MicrophoneIcon, RestartIcon, StopIcon } from '@kibotalk/ui/icons'
 
 /** RMS mapped through a sqrt curve so typical speech (quiet in raw RMS terms) still visibly moves the meter. */
 function levelFromChunk(chunk: Float32Array): number {
@@ -37,51 +27,33 @@ function levelFromChunk(chunk: Float32Array): number {
 
 export type EnrollmentPageProps = {
   conversationLang: AppLanguage
-  /** Whether a voiceprint is already saved on this device (skips straight to "done"). */
-  enrolled: boolean
-  onEnrolled: () => void
+  enrolled?: boolean
   onEnterSession: () => void
-  /** Desktop's standalone onboarding window — see `WizardScreen`. */
   embedded?: boolean
-  /**
-   * Whether the speaker-embedding model has finished downloading — `apps/web`
-   * gates entering the record step on this (see `startModelPreload`).
-   * Defaults to `true` (desktop bundles the model, so it's always ready).
-   */
-  recordReady?: boolean
-  /** Override the done-step primary button label (default: 进入会话). */
-  enterSessionLabel?: string
-  /** Start on this step instead of inferring from `enrolled`. */
-  initialStep?: WizardStep
+  enterDisabled?: boolean
+  children?: ReactNode
+  requestMicrophone?: () => Promise<boolean>
 }
 
-/**
- * Voiceprint enrollment wizard: read a short passphrase once, save the
- * embedding locally. Three real states of `WizardStep` — intro → record →
- * done — no dev-only threshold tuning or free-speech verify (see
- * `apps/playground/src/Enrollment.tsx`'s "实验室" panel for that).
- */
+type RecordingPhase = 'idle' | 'starting' | 'recording' | 'processing' | 'saved'
+
 export function EnrollmentPage({
   conversationLang,
   enrolled,
-  onEnrolled,
   onEnterSession,
   embedded,
-  recordReady = true,
-  enterSessionLabel,
-  initialStep,
+  enterDisabled,
+  children,
+  requestMicrophone,
 }: EnrollmentPageProps) {
-  const [step, setStep] = useState<WizardStep>(initialStep ?? (enrolled ? 'done' : 'intro'))
-  const [starting, setStarting] = useState(false)
-  const [recording, setRecording] = useState(false)
-  const [working, setWorking] = useState(false)
+  const [phase, setPhase] = useState<RecordingPhase>(enrolled ? 'saved' : 'idle')
   const [level, setLevel] = useState(0)
   const [error, setError] = useState('')
   const { t } = useI18n()
-  const steps = [{ label: t('stepIntro') }, { label: t('stepRecord') }, { label: t('stepDone') }]
   const passphrase = PASSPHRASE_BY_LANG[conversationLang]
   const verifierRef = useRef<EmbeddingSpeakerVerifier | null>(null)
   const audioRef = useRef<AudioSource | null>(null)
+  const recordingStart = useRef<AbortController | null>(null)
   const chunksRef = useRef<Float32Array[]>([])
 
   function verifier() {
@@ -92,150 +64,131 @@ export function EnrollmentPage({
     }))
   }
 
-  function fail(message: string) {
-    setError(message)
-    toast.error(message)
-  }
-
   useEffect(() => {
     return () => {
+      recordingStart.current?.abort()
       audioRef.current?.stop()
       audioRef.current = null
     }
   }, [])
 
-  /** Advances to the record step and starts capturing in one action — no separate "start" click once the passphrase is on screen. */
   async function beginRecording() {
-    setStep('record')
+    if (recordingStart.current) return
+    const controller = new AbortController()
+    recordingStart.current = controller
     setError('')
-    setStarting(true)
+    setPhase('starting')
     chunksRef.current = []
     try {
+      if (requestMicrophone && !(await requestMicrophone())) throw new Error('Microphone permission denied')
+      controller.signal.throwIfAborted()
       const audio = new AudioSource()
       audioRef.current = audio
       await audio.start((chunk) => {
         chunksRef.current.push(chunk)
         setLevel(levelFromChunk(chunk))
-      })
-      setRecording(true)
+      }, controller.signal)
+      setPhase('recording')
     } catch {
-      fail(t('voiceprintFailed'))
+      if (!controller.signal.aborted) setError(t('microphoneAccessError'))
       audioRef.current?.stop()
       audioRef.current = null
+      setPhase('idle')
     } finally {
-      setStarting(false)
+      recordingStart.current = null
     }
   }
 
   async function stopRecording() {
-    if (!recording) return
-    const pcm = concatPcm(chunksRef.current)
+    if (phase !== 'recording') return
+    const chunks = chunksRef.current
     chunksRef.current = []
     audioRef.current?.stop()
     audioRef.current = null
-    setRecording(false)
     setLevel(0)
 
-    if (pcm.length === 0) {
-      fail(t('noAudioRecorded'))
+    if (chunks.every((chunk) => chunk.length === 0)) {
+      setPhase('idle')
+      setError(t('noAudioRecorded'))
       return
     }
 
-    setWorking(true)
+    setPhase('processing')
     try {
+      await loadModelFile(speakerModelFile)
       await verifier().enroll((async function* () {
-        yield pcm.buffer as ArrayBuffer
+        for (const chunk of chunks) yield chunk.slice().buffer
       })(), passphrase)
-      setEnrolledDone()
-      toast.success(t('voiceprintSavedLocal'))
+      setPhase('saved')
     } catch (cause) {
       const message =
         cause instanceof EnrollmentAudioError
           ? t(cause.code === 'too-short' ? 'voiceprintTooShort' : 'voiceprintTooQuiet')
           : t('voiceprintFailed')
-      fail(message)
-    } finally {
-      setWorking(false)
+      setError(message)
+      setPhase('idle')
     }
   }
 
-  function setEnrolledDone() {
-    setStep('done')
-    onEnrolled()
+  const saved = phase === 'saved'
+  let recordingControls: ReactNode
+  if (phase === 'recording') {
+    recordingControls = (
+      <>
+        <LevelMeter level={level} />
+        <Button className="w-full" variant="destructive" onClick={() => void stopRecording()}>
+          <StopIcon className="size-4" />
+          {t('stopRecording')}
+        </Button>
+      </>
+    )
+  } else if (phase === 'starting' || phase === 'processing') {
+    recordingControls = (
+      <p role="status" className="text-center text-sm text-muted-foreground">
+        {t(phase === 'starting' ? 'preparingMicrophone' : 'processing')}
+      </p>
+    )
+  } else if (phase === 'idle') {
+    recordingControls = (
+      <Button className="w-full" size="lg" onClick={() => void beginRecording()}>
+        <MicrophoneIcon className="size-4" />
+        {t(error ? 'retryRecording' : 'startRecording')}
+      </Button>
+    )
   }
 
-  const busy = starting || recording || working
-  const stepIndex = step === 'intro' ? 0 : step === 'record' ? 1 : 2
-
   return (
-    <WizardScreen embedded={embedded} className="space-y-5 p-7">
-      <StepIndicator steps={steps} current={stepIndex} />
+    <WizardScreen embedded={embedded} className="space-y-5 p-5 sm:p-6">
+      <h1 className="text-xl font-semibold">{t(saved ? 'voiceprintSaved' : 'recordVoiceTitle')}</h1>
 
-      {step === 'intro' ? (
-        <div className="space-y-5">
-          <div className="space-y-1.5">
-            <h2 className="text-lg font-bold">{t('recordVoiceTitle')}</h2>
-            <p className="text-sm leading-relaxed text-muted-foreground">
-              {t('recordVoiceDescription')}
-            </p>
-          </div>
-          <Button className="w-full" size="lg" onClick={() => void beginRecording()} disabled={!recordReady}>
-            {recordReady ? <Mic className="size-4" /> : <Loader2 className="size-4 animate-spin" />}
-            {recordReady ? t('startRecording') : t('preparingSpeech')}
-          </Button>
-        </div>
-      ) : null}
-
-      {step === 'record' ? (
+      {!saved ? (
         <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">{t('recordVoiceDescription')}</p>
           <div className="rounded-md bg-foreground/6 p-4">
             <div className="mb-1.5 text-xs text-muted-foreground">{t('pleaseRead')}</div>
             <div className="text-lg font-bold leading-relaxed">{passphrase}</div>
           </div>
 
-          {recording ? (
-            <>
-              <LevelMeter level={level} />
-              <Button className="w-full" variant="destructive" onClick={() => void stopRecording()} disabled={working}>
-                <Square className="size-4" />
-                {t('stopRecording')}
-              </Button>
-            </>
-          ) : error ? (
-            <Button className="w-full" onClick={() => void beginRecording()} disabled={!recordReady}>
-              <Mic className="size-4" />
-              {t('retryRecording')}
-            </Button>
-          ) : (
-            <p className="text-center text-sm text-muted-foreground">
-              {starting ? t('preparingMicrophone') : t('processing')}
-            </p>
-          )}
+          {recordingControls}
         </div>
       ) : null}
 
-      {step === 'done' ? (
-        <div className="space-y-4">
-          <div className="space-y-1.5">
-            <h2 className="text-lg font-bold">{t('voiceprintSaved')}</h2>
-            <p className="text-sm leading-relaxed text-muted-foreground">
-              {t('voiceprintSavedDescription')}
-            </p>
-          </div>
-          <div className="flex gap-2">
-            <Button className="flex-1" size="lg" onClick={onEnterSession}>
-              <ArrowRight className="size-4" />
-              {enterSessionLabel ?? t('enterSession')}
-            </Button>
-            <Button className="flex-1" variant="soft" size="lg" onClick={() => void beginRecording()} disabled={busy}>
-              <RotateCcw className="size-4" />
-              {t('rerecord')}
-            </Button>
-          </div>
+      {children}
+
+      {saved ? (
+        <div className="flex flex-wrap gap-2">
+          <Button className="flex-1" size="lg" onClick={onEnterSession} disabled={enterDisabled}>
+            <ArrowRightIcon className="size-4" />
+            {t('enterSession')}
+          </Button>
+          <Button className="flex-1" variant="soft" size="lg" onClick={() => void beginRecording()}>
+            <RestartIcon className="size-4" />
+            {t('rerecord')}
+          </Button>
         </div>
       ) : null}
 
-      {error ? <p className="text-sm text-destructive">{t('errorPrefix')}{error}</p> : null}
+      {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
     </WizardScreen>
   )
 }

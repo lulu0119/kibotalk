@@ -15,7 +15,7 @@ import {
   SessionListItem,
   StickyNoteCard,
 } from '@kibotalk/ui'
-import { ArrowLeft, Trash2 } from 'lucide-react'
+import { ArrowLeftIcon, TrashBinTrashIcon } from '@kibotalk/ui/icons'
 
 export type HistoryPageProps = {
   storage: ConversationStorage
@@ -105,7 +105,7 @@ export function HistoryPage({
         >
           <div className="flex shrink-0 items-center gap-2 border-b border-border p-3">
             <Button variant="ghost" size="icon" onClick={onBack} aria-label={t('back')}>
-              <ArrowLeft className="size-4" />
+              <ArrowLeftIcon className="size-4" />
             </Button>
             <h1 className="text-base font-bold">{t('history')}</h1>
             {sessions.some((session) => session.status === 'stopped') ? (
@@ -145,7 +145,7 @@ export function HistoryPage({
                   onClick={() => setSelectedId(null)}
                   aria-label={t('back')}
                 >
-                  <ArrowLeft className="size-4" />
+                  <ArrowLeftIcon className="size-4" />
                 </Button>
                 <div className="min-w-0 flex-1">
                   <h2 className="truncate text-base font-bold">{localizedSessionTitle(selected)}</h2>
@@ -160,7 +160,7 @@ export function HistoryPage({
                     aria-label={t('deleteSession')}
                     onClick={() => setDeleteTarget('session')}
                   >
-                    <Trash2 className="size-4" />
+                    <TrashBinTrashIcon className="size-4" />
                   </Button>
                 ) : null}
               </div>

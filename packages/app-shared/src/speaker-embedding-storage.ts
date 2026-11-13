@@ -1,26 +1,20 @@
 import { IndexedDbEmbeddingStorage } from '@kibotalk/speaker'
-import {
-  SPEAKER_MODEL_DTYPE,
-  SPEAKER_MODEL_ID,
-  SPEAKER_MODEL_REVISION,
-} from './audio/speaker-model-contract'
+import { speakerModelId, speakerModelRevision } from './audio/local-models'
 
-const LEGACY_SPEAKER_EMBEDDING_DATABASES = ['kibotalk-speaker']
+const LEGACY_SPEAKER_EMBEDDING_DATABASES = [
+  'kibotalk-speaker',
+  'kibotalk-speaker:onnx-community--wespeaker-voxceleb-resnet34-LM:6a61a1833ff2583aabeba044f5c8221f00b67ceb:q8',
+]
 
-/**
- * Embeddings are only valid for the exact model revision and numeric format
- * that produced them. Changing either creates a new namespace and naturally
- * sends upgraded users through enrollment again.
- */
 export const CURRENT_SPEAKER_EMBEDDING_DATABASE = [
   'kibotalk-speaker',
-  SPEAKER_MODEL_ID.replace('/', '--'),
-  SPEAKER_MODEL_REVISION,
-  SPEAKER_MODEL_DTYPE,
+  speakerModelId,
+  speakerModelRevision,
 ].join(':')
 
-export function createCurrentSpeakerEmbeddingStorage(): IndexedDbEmbeddingStorage {
-  return new IndexedDbEmbeddingStorage(CURRENT_SPEAKER_EMBEDDING_DATABASE)
+export function createCurrentSpeakerEmbeddingStorage(scope?: string): IndexedDbEmbeddingStorage {
+  const database = scope ? `${CURRENT_SPEAKER_EMBEDDING_DATABASE}:${scope}` : CURRENT_SPEAKER_EMBEDDING_DATABASE
+  return new IndexedDbEmbeddingStorage(database)
 }
 
 /**

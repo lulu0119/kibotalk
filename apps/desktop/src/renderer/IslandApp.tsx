@@ -12,6 +12,7 @@ import {
 } from '@kibotalk/app-shared'
 import { IslandBar, IslandDragHandle, IslandSeparator, IslandStatus } from '@kibotalk/ui'
 import { IslandPage } from '@kibotalk/pages'
+import { streamDesktopReply } from './reply-model'
 import type { DesktopSessionCommand, IslandContentSide } from '../shared/ipc'
 
 async function getSystemAudioStream(): Promise<MediaStream> {
@@ -42,7 +43,7 @@ function ReadyIsland({
     languageSnapshot: snapshot,
     sessionSnapshot: snapshot,
     storage,
-    candidateRoundsMax: 3,
+    replyStream: streamDesktopReply,
     getSystemAudioStream,
     stopSystemAudioStream: () => window.kibotalk.systemAudio.stop(),
   })
@@ -197,7 +198,7 @@ function ReadyIsland({
 function IslandContent({ prefs }: { prefs: LanguagePrefs }) {
   const { t } = useI18n()
   const [completed, setCompleted] = useState<boolean | null>(null)
-  const [storage] = useState(createLocalConversationStorage)
+  const [storage] = useState(() => createLocalConversationStorage(window.kibotalk.app.previousHistoryUserId))
 
   useEffect(() => {
     let cancelled = false

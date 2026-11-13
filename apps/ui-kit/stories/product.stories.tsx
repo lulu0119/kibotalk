@@ -1,5 +1,11 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import { History, Play, Settings, Sparkles, Square } from 'lucide-react'
+import {
+  HistoryDuotoneIcon,
+  MicrophoneOffDuotoneIcon,
+  SettingsDuotoneIcon,
+  SparklesDuotoneIcon,
+  StopDuotoneIcon,
+} from '@kibotalk/ui/icons'
 import {
   Badge,
   Button,
@@ -57,24 +63,24 @@ export const StickyNoteStackShowcase: Story = {
 export const IslandBarShowcase: Story = {
   render: () => (
     <div className="desk-surface flex h-64 w-full items-center justify-center rounded-2xl p-6">
-      <IslandBar className="w-full max-w-md">
-        <IslandStatus label="听写中" pulse toneClassName="bg-emerald-400" />
+      <IslandBar>
+        <IslandStatus label="听写中" pulse toneClassName="bg-primary-soft-strong" />
         <IslandSeparator />
-        <IslandToggleButton on label="停止会话">
-          <Square className="size-4" />
-        </IslandToggleButton>
+        <IslandNavButton label="停止会话">
+          <StopDuotoneIcon />
+        </IslandNavButton>
         <IslandToggleButton on={false} label="转写：关">
-          <Sparkles className="size-4" />
+          <MicrophoneOffDuotoneIcon />
         </IslandToggleButton>
         <IslandToggleButton on label="AI 提示：开">
-          <Play className="size-4" />
+          <SparklesDuotoneIcon />
         </IslandToggleButton>
         <IslandSeparator />
         <IslandNavButton label="设置">
-          <Settings className="size-4" />
+          <SettingsDuotoneIcon />
         </IslandNavButton>
         <IslandNavButton label="历史">
-          <History className="size-4" />
+          <HistoryDuotoneIcon />
         </IslandNavButton>
         <IslandDragHandle />
       </IslandBar>

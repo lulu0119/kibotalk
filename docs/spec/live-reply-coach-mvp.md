@@ -34,16 +34,14 @@
 ### 1.2 核心用户流程
 
 ```text
-首次打开（按系统初始化界面语言；立刻申请权限；后台开始拉全部端侧模型权重）
-    → Onboarding 填信息（界面语言 / 对话语言 / 水平；下载在后台继续）
-        · 预填：界面语言跟随系统；对话 ja；ja 水平 beginner；另两语言水平默认 intermediate
-        · 须显式确认一次（满足「第一次就要选择」）
-        · 右上角小圆圈显示下载进度
-        · 权重未下完 → 不能进入下一步 / 开始会话
-    → 声纹录制（权重已就绪；口令随对话语言 ja/en/zh；embedding 仅在本机）
+首次打开（界面语言跟随系统；Web 后台下载 VAD 和 CAM++，macOS 安装包自带）
+    → 选择对话语言和一个支持该语言的转写模型（显示覆盖语言和体积）
+    → 确认后下载选中的转写模型，同时可直接读口令录声纹
+        · 点击录音时申请麦克风权限；系统音频权限在设置中按需授权
+        · 声纹与模型就绪后进入会话；失败可在当前页重试
     → 开始会话（快照 uiLang / conversationLang / meaningLang / level / 音源与设备；进行中锁定）
     → 持续听音频 → VAD 切段 → 说话人判定
-        → other 说完：STT（language=conversationLang）→ 写入对话 → 请求 LLM（通常给 3 条候选）
+        → other 说完：本地 STT→ 写入对话 → 请求 LLM（通常给 3 条候选）
         → user 说完：STT → 写入对话 → 同样请求 LLM（由模型决定出候选或跳过）
     → 循环
     → 暂停（释放音频但保留同一会话）或停止（封存本会话）
@@ -54,14 +52,14 @@
 
 | 轴 | 字段 | 白名单 | 作用 |
 |----|------|--------|------|
-| 对话语言 | `conversationLang` | `ja` \| `en` \| `zh` | 同场双方用语；STT hint、时间轴原文、候选 `targetText`、录入口令 |
+| 对话语言 | `conversationLang` | `ja` \| `en` \| `zh` | 同场双方用语；匹配本地转写模型、时间轴原文、候选 `targetText`、录入口令 |
 | 界面语言 | `uiLang` | `ja` \| `en` \| `zh` | 产品界面文案；首次跟随系统，停止时可切换并立即生效 |
 | 候选释义语言（内部） | `meaningLang` | `ja` \| `en` \| `zh` | 不单独展示设置；开会话时由 `uiLang` 派生并冻结，允许与对话语言相同 |
 | 水平 | `level` | `beginner` \| `intermediate` \| `advanced` | 单一全局难度值，进 prompt |
 
 产品界面做中 / 日 / 英三语。界面语言、对话语言、水平、音频来源、麦克风设备及声纹只可在 stopped / 无活跃会话时修改；新会话开始时冻结快照。主题、登录时启动和会话内 AI 建议开关不受该锁定约束。
 
-**首次打开（硬性，勿懒加载）**：`apps/web` 一进入就**后台**开始拉取并缓存**全部**端侧模型权重（至少含 Silero VAD、speaker verification；以后若有其它本地 WASM/ONNX 一并列入），**禁止**「用到某能力时才开始拉模型」。下载与 Onboarding **填表并行**：用户填界面语言 / 对话语言 / 水平时不挡操作；**右上角用小进度圆**展示通用语音能力准备进度，不能向用户显示模型名称、提供方或删除模型入口。权重**全部下完之前**，进入下一步 / 「开始会话」按钮保持不可用。同一时机申请所需权限：Web 请求麦克风，桌面请求麦克风与系统音频 / 屏幕录制。理由：把大体积下载叠在填表时间上；现场演示 / 真机网络差时，会话中途再下几百 MB 会卡死体验；权限延后弹窗也更容易被拒或打断录音。
+**模型按需下载**。Zipformer 默认覆盖中英日。首次设置时确认一个 ASR 模型再下载，之后可在设置查看支持语言、体积和下载状态，水平也在设置中调整。Web 启动时下载 Silero VAD 和 CAM++ 并按版本缓存。macOS 安装包内置这两个模型，开发版没有资源时使用同一下载缓存。
 
 **触发原则**：不再「仅对方轮次出候选」。任一 speaker 的 turn 入库后都进入教练请求；LLM 根据上下文判断本轮是否需要开口提示（见 F04）。
 ### 1.3 功能清单
@@ -72,7 +70,7 @@
 |----|------|------|------|
 | F01 | 声纹 Enrollment | 开始前读**随 `conversationLang` 的**固定口令，建立 user 声纹；换语言不强制重录 | 后续能区分 user / other |
 | F02 | 说话人识别 | 每段音频判定 `user` \| `other` | 对方轮次不误触为用户 |
-| F03 | VAD + STT | 按「一句」切段并转写（STT `language` = 会话快照的 `conversationLang`）；转写**可见但不可编辑**（ASR 错误由 LLM 上下文消化）。Realtime 路径可显示进行中草稿（partial）；**正式 turn / LLM 仅定稿** | 时间轴显示转写原文（可含草稿行） |
+| F03 | VAD + STT | 按「一句」切段并转写（所选模型覆盖会话快照的 `conversationLang`）；转写**可见但不可编辑**（ASR 错误由 LLM 上下文消化）。Realtime 路径可显示进行中草稿（partial）；**正式 turn / LLM 仅定稿** | 时间轴显示转写原文（可含草稿行） |
 | F04 | 回复候选（教练闸门） | **任一** `speaker` turn 入库后**一律**请求 LLM。输出 **恰好 3 条**或 **`[]`**。续写与应答同一套三卡（不加 `kind`）。卡壳 = user 停顿后半句 → 给**补全后的完整可念句** | 有 3 条时含 meaning / targetText；`conversationLang===ja` 时含 segments；`[]` / 失败 / 请求中均**保留**上一轮已提交候选（不先清空） |
 | F05 | 用户轮次感知 | `speaker === 'user'` 时 STT 写入对话，并与 other 一样触发 F04 | 上下文含用户实际说的；闸门见 §1.4 |
 | F06 | 语言水平 | 统一三档 beginner / intermediate / advanced，存单一全局 `level`；进 prompt | 初级与高级输出可肉眼区分 |
@@ -101,7 +99,7 @@
 | TTS / AI 代说 | 产品定位是用户自己开口 |
 | iPhone 通话监听 | Web / PWA 做不到 |
 | 登录账号 | 本地会话即可 |
-| 离线 LLM | STT 使用配置的实时转写提供方，LLM 可使用本地 OpenAI 兼容端点（§2.9） |
+| 本地回复模型 | 可配置本地 OpenAI 兼容端点（§2.9） |
 | 会话中热切换语言 | 时间轴与 STT hint 会混乱；仅会话外改、新会话快照 |
 | 对方说异于对话语言的语 | 同场双方都用 `conversationLang`；异语为后续愿景 |
 
@@ -232,10 +230,9 @@ type ReplyCandidate = {
 | 会话编排 | `packages/conversation` | 借鉴 [DeepChat](https://github.com/thinkinaixyz/deepchat) Tape 思路 |
 | 语音 Pipeline | `packages/pipeline` | [webai-example-realtime-voice-chat](https://github.com/proj-airi/webai-example-realtime-voice-chat)（VAD + STT，无 TTS） |
 | 提示词 | **Velin** `@velin-dev/core-react`（TSX） | [moeru-ai/velin](https://github.com/moeru-ai/velin) |
-| LLM | **xsai** | AIRI 生态 |
-| STT | 统一走代理 `WS /stt-realtime`；DashScope `qwen3-asr-flash-realtime` | 见 §2.9、ADR 0004、ADR 0005 |
-| 服务端 | **Hono** 薄代理（转发 LLM + STT，藏 key，streaming） | — |
-| 本机代理 | Hono，监听 `127.0.0.1:8787` | Web 与 macOS 共用 |
+| LLM | xsAI v1 + `@xsai-ext/providers` | 应用内配置端点和模型，见 §2.9 |
+| 语音推理 | Sherpaw | Silero v5 VAD、CAM++ 声纹、流式 Zipformer / X-ASR / Paraformer |
+| 调试追踪 | AIRI 的 trace-kit、stream-kit、timeline-canvas、ui-timeline 和 ui-trace | Playground |
 | Prompt 评估 | **vieval**（根目录 config + `evals/`） | [vieval-dev/vieval](https://github.com/vieval-dev/vieval) |
 | 移动 | **PWA**（`apps/web` 构建） | — |
 | 桌面 Web | 同一 `packages/*`，`apps/web` 响应式 | 对齐 AIRI「浏览器入口」角色，非其命名 |
@@ -265,7 +262,6 @@ live-reply-coach/
 ├── apps/
 │   ├── playground/             # 功能验证入口：极简前端，测 pipeline 各模块（见 §2.7）
 │   ├── web/                    # 薄入口：Vite dev、生产构建、PWA manifest
-│   ├── api/                    # Hono 业务网关：auth / sync / quota / admin + STT / LLM
 │   └── desktop/                # P1：Electron 薄入口（主进程音频、窗口）
 ├── packages/
 │   ├── ui/                     # shadcn 组件 + design tokens
@@ -365,7 +361,7 @@ Velin(repliesPrompt) → xsAI → JSON: 3 candidates | []
 3. **多轮无用户**：可连续多个 other turn——每次 other 停顿达标都触发 LLM；若返回 3 条则刷新候选，若 `[]` 则保留原展示
 4. **完整对话进下一轮**：被打断后新一轮 LLM 的 context = **所有已完成的 ConversationTurn**。半截候选与 realtime partial **不进 context**（§1.4「以 STT 为准」）
 5. **抢说 / 连说**：对方或用户停说后的阈值倒计时中若另一方（或同方）又开口 → **取消待触发或在途的 LLM**，先完成新 turn 的 STT/入库，再按规则 1 **重新请求教练**（user 入库后同样触发，不再「只入库不出 LLM」）
-6. **STT 失败**：realtime 短退避重连 → 仍失败 → `appendTurn({ text: '', sttFailed: true })` 或停转写并明示错误→ **仍可触发 LLM**（上下文带 `sttFailed`，由模型决定是否给提示）→ 循环继续，**不杀会话**
+6. **STT 失败**：显示本地模型或音频错误，暂停会话。已保存的转写和回复建议可继续查看。
 7. **LLM 失败**：自动重试 1 次（1s 退避）→ 仍失败 → 候选区可提示「出候选失败，重试」，但**不清空**上一轮已提交候选；turn 已入库不动 → 循环继续听下一轮，**不杀会话**
 8. **不做**：熔断、多轮指数退避、离线缓存重放、客户端预过滤闸门、双模型、中途 partial 触发 LLM——MVP 过度
 
@@ -398,13 +394,13 @@ VAD 停顿阈值与说话人判定阈值为**频繁调试参数**，在 playgrou
 
 | 方案 | 说明 | 体量 / 延迟 |
 |------|------|-------------|
-| **生产默认**：Transformers.js + [`onnx-community/wespeaker-voxceleb-resnet34-LM`](https://huggingface.co/onnx-community/wespeaker-voxceleb-resnet34-LM) Q8 | 256 维 embedding；模型专属阈值 `0.49` + `0.05` 迟滞；固定 revision | 权重约 6.4MB；本地 held-out trial 比 WavLM FP32 快约 6.9 倍 |
+| **生产默认**：Sherpaw + [CAM++](https://huggingface.co/moeru-ai/sherpaw-campplus-zh-en-advanced) | 192 维 embedding，固定 revision，默认阈值 `0.60` 并保留迟滞 | 权重约 28 MB |
 | 历史基线：[`Xenova/wavlm-base-plus-sv`](https://huggingface.co/Xenova/wavlm-base-plus-sv) FP32 | 512 维 embedding；保留为研究对照，不再生产加载 | 权重约 384MB；本地 held-out score overlap 明显 |
 | [`@jaehyun-ko/speaker-verification`](https://github.com/jaehyun-ko/node-speaker-verification)（HF NeXt-TDNN ONNX） | enroll / embedding / cosine | mobile 数 MB；单次约几百 ms |
 | [Picovoice Eagle Web](https://picovoice.ai/docs/quick-start/eagle-web/) | 商用 on-device，帧级打分 | 延迟低；需 access key |
 | 自建 ECAPA / WeSpeaker → ONNX + `onnxruntime-web` | 最灵活 | 可量化控体积 |
 
-落地注意：多线程 WASM 常要 **COOP/COEP**；推理放 **Web Worker**；iOS 优先小模型。权重与权限按 §1.2「首次打开」**后台预拉取 / 预申请**（填表并行，右上角进度圆，下完才能进），不要按页面或按能力懒加载。
+Sherpaw 在 Worker 中执行声纹提取。Web 启动时缓存模型，macOS 从安装包读取。旧模型的声纹需要重新录入。
 
 **云 API：verification 近乎空白**
 
@@ -473,7 +469,7 @@ clearHistory(): Promise<void>
 - running / paused 在刷新、崩溃或设备中断后恢复为 `pauseReason: 'unexpected'`，可继续或停止。
 - 时长不计暂停区间。
 
-实时语音按最多 30 秒的片段处理。DashScope 代理另外限制每轮 PCM 样本数。
+实时语音按最多 30 秒的片段处理。
 
 历史列表和详情从会话开始时间与对话语言生成标题，按会话冻结的 `uiLang` 本地化。已有会话也用同一规则显示标题。
 
@@ -547,26 +543,17 @@ packages/pipeline、speaker、llm、conversation  （真实实现）
  （极简 UI，先调通）    （原型定稿后的产品壳）
 ```
 
-### 2.8 本机代理
+### 2.8 本地语音
 
-客户端负责 VAD、声纹、turn pipeline 和会话持久化。`apps/api` 在
-`127.0.0.1:8787` 运行，加载本机 `.env` 的提供方配置。
+Sherpaw 在 Worker 中进行 VAD 和流式识别。CAM++ 在独立 Worker 中提取声纹。
+语音模型按固定版本下载至 IndexedDB。音频不发送给回复模型。
+使用系统音轨与麦克风双路输入时，两个音轨各有独立 VAD 与识别流。
 
-| 路由 | 协议 | 作用 |
-|------|------|------|
-| `POST /api/llm` | SSE | 向配置的模型发送对话上下文，流式返回候选 |
-| `GET /api/stt/providers` | HTTP | 列出本机配置的实时转写提供方 |
-| `POST /api/stt/direct/session` | HTTP | 为讯飞签发短期 WebSocket URL |
-| `WS /api/stt-realtime` | WebSocket | 代理 DashScope 的 `session.start`、`append`、`commit` 和 `finish` |
+### 2.9 回复模型配置
 
-Web 构建产物由本机代理提供，开发时 Vite 将 `/api/*` 转发给代理。
-Web 从 Hugging Face 下载固定版本的 WeSpeaker 与 Silero 模型，桌面安装包内置模型。
-
-### 2.9 配置与环境变量
-
-按 [`.env.example`](../../.env.example) 配置 iFlytek 或 DashScope，以及 OpenAI 兼容的
-LLM。`STT_ACTIVE` 选择转写提供方，`LLM_ACTIVE` 选择回复模型。提供方长期凭证
-留在本机代理。iFlytek 客户端通过签名 URL 直连，DashScope 由代理转发 16 kHz PCM。
+在「设置 → 模型」选择服务商和模型，或手填 OpenAI 兼容 Base URL 与模型 ID。
+API Key 由用户提供。Web 保存在当前浏览器并直连，端点限制 CORS 时提示使用 macOS。
+macOS 通过 Electron 主进程发送请求，并在本机加密存储 Key。
 
 ---
 
@@ -651,8 +638,8 @@ macOS 状态栏应用：apps/desktop（Electron，共用 packages）
 | 风险 | 对策 |
 |------|------|
 | 双人同麦 / 短句 / 音色接近导致 speaker 误判 | 本地声纹 verification + 阈值调参；安静 demo；enrollment 念够 5–10 秒；必要时换 NeXt-TDNN mobile / Eagle 等更稳模型；测 user↔other 混淆率。**不**用 LLM 纠 speaker；**不**做事后纠错；生产仅声纹判定，Playground 声纹页用于 enrollment / 阈值调参 |
-| PWA 本地模型体积大 / iOS 慢 | 生产 WeSpeaker Q8 speaker 权重约 6.4MB；Worker + 缓存；**首次打开后台预下载全部权重**（§1.2，填表并行 + 右上角进度圆，下完才能进），会话中途再下会卡死演示 |
-| 权限延后申请被拒 / 打断录音 | 首次打开与模型预下载同期申请麦克风等权限；勿拖到「开始会话」或 enrollment 才弹 |
+| PWA 本地模型体积大 / iOS 慢 | 权重按需下载并缓存，设置显示模型大小和语言。可在会话前预下载。 |
+| 权限延后申请被拒 / 打断录音 | 首次设置与录入流程中按平台申请所需权限。 |
 | PWA iOS 后台杀进程 | 每轮即时写 IndexedDB；重开后以意外暂停恢复同一会话 |
 | 桌面双路重复收音 | mic 与 system 分 lane、不混音；提示佩戴耳机并保留 echo cancellation；MVP 不做文本跨源去重 |
 

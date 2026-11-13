@@ -1,10 +1,10 @@
-import { AppWindow, StickyNote } from 'lucide-react'
+import { NotesMinimalisticIcon, WindowFrameIcon } from '@kibotalk/ui/icons'
 import { Button, cn } from '@kibotalk/ui'
 import { useConfig, type ProductSurfaceMode } from '../config-store'
 
-const MODES: Array<{ value: ProductSurfaceMode; label: string; hint: string; icon: typeof AppWindow }> = [
-  { value: 'window', label: '窗口', hint: '应用内卡片，无便利贴', icon: AppWindow },
-  { value: 'floating', label: '悬浮', hint: '模拟 Island + 便利贴', icon: StickyNote },
+const MODES: Array<{ value: ProductSurfaceMode; label: string; hint: string; icon: typeof WindowFrameIcon }> = [
+  { value: 'window', label: '窗口', hint: '应用内卡片，无便利贴', icon: WindowFrameIcon },
+  { value: 'floating', label: '悬浮', hint: '模拟 Island + 便利贴', icon: NotesMinimalisticIcon },
 ]
 
 /**
@@ -27,8 +27,8 @@ export function ProductSurfaceToggle({ className }: { className?: string }) {
             key={value}
             type="button"
             size="sm"
-            variant={active ? 'default' : 'ghost'}
-            className={cn('h-8 gap-1.5 px-2.5', !active && 'text-muted-foreground')}
+            variant={active ? 'secondary' : 'ghost'}
+            className={cn(!active && 'text-muted-foreground')}
             aria-pressed={active}
             title={hint}
             onClick={() => patch({ productSurfaceMode: value })}

@@ -1,136 +1,96 @@
-import { streamText } from '@xsai/stream-text'
+import { chat, messages, responses, streamText } from 'xsai'
 
-/**
- * Provider-agnostic LLM client backed by xsai.
- *
- * xsai is an OpenAI-compatible streaming runtime: it owns the fetch, the SSE
- * parsing, and abort forwarding. Each provider adapter only contributes the
- * provider-specific bits (base URL, extra headers); adding a provider = adding
- * an adapter + an env group, with no interface changes.
- */
 export type ChatMessage = {
   role: 'system' | 'user' | 'assistant'
   content: string
 }
 
-export type LlmThinkingMode = 'enabled' | 'disabled'
+export type TextProtocol = 'chat' | 'responses' | 'messages'
 
-export type LlmClientOptions = {
-  provider: string
-  baseUrl: string
+export type LlmSettings = {
+  providerId: string
+  baseURL: string
   apiKey: string
   model: string
-  /** DeepSeek V4 defaults to thinking on; live coach wants this off for TTFT. */
-  thinking: LlmThinkingMode
+  protocol: TextProtocol
+  path?: string
 }
 
-export type LlmUsage = {
-  inputTokens: number
-  outputTokens: number
-  totalTokens: number
+export const emptyLlmSettings: LlmSettings = {
+  providerId: '',
+  baseURL: '',
+  apiKey: '',
+  model: '',
+  protocol: 'chat',
 }
 
-export interface LlmClient {
-  streamChat(args: {
-    messages: ChatMessage[]
-    signal?: AbortSignal
-    onUsage?: (usage: LlmUsage) => void
-  }): AsyncIterable<string>
+export type LlmSettingsStore = {
+  load: () => Promise<LlmSettings>
+  save: (settings: LlmSettings) => Promise<void>
 }
 
-export type LlmAdapterFactory = (opts: LlmClientOptions) => LlmClient
+export type ReplyTextStream = (input: ChatMessage[], signal: AbortSignal) => AsyncIterable<string>
 
-const extraHeaders = {
-  'User-Agent': 'kibotalk/0.1.0',
-  'x-opencode-session': 'kibotalk',
+export type ReplyModelHost = {
+  settings: LlmSettingsStore
+  stream: ReplyTextStream
 }
 
-/**
- * xsai streaming adapter. OpenRouter (and any OpenAI-compatible endpoint) works
- * with just a base URL + Bearer key; xsai handles `stream: true`, the SSE
- * `data:` parse, `[DONE]` termination, and forwarding `abortSignal` to fetch.
- * Empty deltas are skipped so downstream consumers only see real tokens.
- */
-function createXsaiClient({ baseUrl, apiKey, model, thinking }: LlmClientOptions): LlmClient {
+export type ReplyStreamMessage =
+  | { type: 'token'; text: string }
+  | { type: 'error'; message: string }
+  | { type: 'done' }
+
+export function readLlmSettings(value: unknown): LlmSettings {
+  if (!value || typeof value !== 'object') return emptyLlmSettings
+  const settings = value as Partial<LlmSettings>
   return {
-    async *streamChat({ messages, signal, onUsage }) {
-      const result = streamText({
-        apiKey,
-        baseURL: baseUrl,
-        model,
-        messages,
-        headers: extraHeaders,
-        abortSignal: signal,
-        // DeepSeek OpenAI-compatible extension; ignored by providers that don't use it.
-        thinking: { type: thinking },
-        streamOptions: { includeUsage: true },
-      })
-      const { textStream } = result
-      const reader = textStream.getReader()
-      try {
-        while (true) {
-          const { value, done } = await reader.read()
-          if (done) break
-          if (value) yield value
-        }
-      } finally {
-        reader.releaseLock()
-      }
-      const usage = await result.totalUsage
-      if (usage) {
-        onUsage?.({
-          inputTokens: usage.prompt_tokens,
-          outputTokens: usage.completion_tokens,
-          totalTokens: usage.total_tokens,
-        })
-      }
-    },
+    providerId: typeof settings.providerId === 'string' ? settings.providerId : '',
+    baseURL: typeof settings.baseURL === 'string' ? settings.baseURL.trim() : '',
+    apiKey: typeof settings.apiKey === 'string' ? settings.apiKey.trim() : '',
+    model: typeof settings.model === 'string' ? settings.model.trim() : '',
+    protocol: settings.protocol === 'responses' || settings.protocol === 'messages' ? settings.protocol : 'chat',
+    path: typeof settings.path === 'string' ? settings.path : undefined,
   }
 }
 
-const adapters: Record<string, LlmAdapterFactory> = {
-  openrouter: createXsaiClient,
-  openai: createXsaiClient, // LM Studio / any OpenAI-compatible /v1
-}
+const textModels = { chat, messages, responses }
 
-/**
- * Create a streaming LLM client for the given provider. Throws a clear error
- * for unregistered providers so callers don't get a silent wrong-adapter call.
- */
-export function createLlmClient(opts: LlmClientOptions): LlmClient {
-  const factory = adapters[opts.provider]
-  if (!factory) {
-    throw new Error(
-      `unknown provider: ${opts.provider}. registered: ${Object.keys(adapters).join(', ')}`,
-    )
+export async function* streamReplyText(
+  settings: LlmSettings,
+  input: ChatMessage[],
+  signal: AbortSignal,
+  fetcher?: typeof fetch,
+): AsyncGenerator<string> {
+  if (!settings.baseURL || !settings.model) throw new Error('LLM_SETTINGS_REQUIRED')
+  const url = new URL(settings.baseURL)
+  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) {
+    throw new Error('LLM_INVALID_URL')
   }
-  return factory(opts)
-}
-
-/**
- * Read `LLM_ACTIVE` + the active `LLM_<PROVIDER>_*` group from an env map and
- * return the factory args. Pure: takes env as an argument, does not touch
- * `process.env`, so it is testable without node.
- *
- * `LLM_THINKING=enabled` turns on provider thinking/CoT (DeepSeek V4 default).
- * Anything else (including unset) → disabled, for live-coach TTFT.
- */
-export function llmConfigFromEnv(env: Record<string, string | undefined>): LlmClientOptions {
-  const active = env.LLM_ACTIVE
-  if (!active) throw new Error('LLM_ACTIVE is not set')
-  const groupPrefix = `LLM_${active.toUpperCase()}_`
-  const baseUrl = env[`${groupPrefix}BASE_URL`]
-  const apiKey = env[`${groupPrefix}API_KEY`]
-  const model = env[`${groupPrefix}MODEL`]
-  const missing: string[] = []
-  if (!baseUrl) missing.push(`${groupPrefix}BASE_URL`)
-  if (!apiKey) missing.push(`${groupPrefix}API_KEY`)
-  if (!model) missing.push(`${groupPrefix}MODEL`)
-  if (missing.length > 0) {
-    throw new Error(
-      `missing env vars for provider "${active}": ${missing.join(', ')}`,
-    )
+  const model = textModels[settings.protocol]({
+    baseURL: url.href,
+    apiKey: settings.apiKey || undefined,
+    model: settings.model,
+    path: settings.path,
+    fetch: fetcher,
+  })
+  const stream = streamText(model, {
+    input,
+    signal,
+    ...(settings.providerId === 'deepseek' && settings.protocol === 'chat'
+      ? { extraBody: { thinking: { type: 'disabled' } } }
+      : {}),
+  })
+  const reader = stream.getReader()
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      if (value.type === 'text.delta') yield value.delta
+      if (value.type === 'step.end' && value.error) throw value.error
+    }
+  } finally {
+    await reader.cancel().catch(() => {})
+    reader.releaseLock()
   }
-  const thinking: LlmThinkingMode = env.LLM_THINKING === 'enabled' ? 'enabled' : 'disabled'
-  return { provider: active, baseUrl: baseUrl!, apiKey: apiKey!, model: model!, thinking }
 }

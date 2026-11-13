@@ -4,13 +4,8 @@ import { cva, type VariantProps } from 'class-variance-authority'
 
 import { cn } from '../../lib/utils'
 
-/**
- * The "selectable token" surface — resting = track tint, on = surface-active
- * + tier1 shadow. Shared by ToggleGroup (chip row / segmented control) and
- * any standalone Toggle.
- */
 const toggleVariants = cva(
-  'inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-full text-sm font-semibold text-foreground/70 transition-[filter] disabled:pointer-events-none disabled:opacity-50 data-[state=on]:bg-surface-active data-[state=on]:text-primary-foreground data-[state=on]:shadow-tier1',
+  'inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-full text-sm font-semibold text-foreground/70 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 data-[state=on]:bg-primary data-[state=on]:text-primary-foreground',
   {
     variants: {
       variant: {

@@ -1,5 +1,5 @@
 import { cn } from '../../lib/utils'
-import { CircleAlert, LoaderCircle } from 'lucide-react'
+import { DangerCircleIcon, LoaderIcon } from '../../icons'
 
 export type ModelPreloadBadgeProps = {
   /** Combined download progress, 0–1. */
@@ -40,9 +40,9 @@ export function ModelPreloadBadge({
       )}
     >
       {error ? (
-        <CircleAlert className="size-[18px] text-destructive" aria-hidden />
+        <DangerCircleIcon className="size-[18px] text-destructive" aria-hidden />
       ) : (
-        <LoaderCircle className="size-[18px] animate-spin text-primary" aria-hidden />
+        <LoaderIcon className="size-[18px] animate-spin text-primary" aria-hidden />
       )}
       <span>{error ? errorLabel : `${label} ${Math.round(clamped * 100)}%`}</span>
     </div>

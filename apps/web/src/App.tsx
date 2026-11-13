@@ -7,9 +7,7 @@ import {
   I18nProvider,
   loadLanguagePrefs,
   persistLanguagePrefs,
-  startModelPreload,
   useI18n,
-  useModelPreloadStatus,
   useProductSession,
   type LanguagePrefs,
 } from '@kibotalk/app-shared'
@@ -20,9 +18,8 @@ import {
   SessionPage,
   SettingsPage,
 } from '@kibotalk/pages'
-import { Button, ModelPreloadBadge } from '@kibotalk/ui'
+import { Button } from '@kibotalk/ui'
 
-type SetupStage = 'checking' | 'enrollment' | 'product'
 type ProductView = 'session' | 'settings' | 'history' | 'voiceprint'
 
 function WebProductShell({
@@ -35,7 +32,6 @@ function WebProductShell({
   onPrefsChange: (prefs: LanguagePrefs) => void
 }) {
   const [view, setView] = useState<ProductView>('session')
-  const [enrolled, setEnrolled] = useState(true)
   const [microphonePermission, setMicrophonePermission] =
     useState<'granted' | 'not-determined' | 'denied' | 'unknown'>('unknown')
   const snapshot = createSessionSnapshot(prefs)
@@ -43,7 +39,6 @@ function WebProductShell({
     languageSnapshot: snapshot,
     sessionSnapshot: snapshot,
     storage,
-    candidateRoundsMax: 3,
   })
 
   useEffect(() => {
@@ -100,10 +95,6 @@ function WebProductShell({
     return (
       <EnrollmentPage
         conversationLang={prefs.conversationLang}
-        enrolled={enrolled}
-        initialStep="intro"
-        recordReady
-        onEnrolled={() => setEnrolled(true)}
         onEnterSession={() => setView('settings')}
       />
     )
@@ -125,133 +116,58 @@ function AppContent({
   prefs: LanguagePrefs
   onPrefsChange: (prefs: LanguagePrefs) => void
 }) {
-  const [stage, setStage] = useState<SetupStage>('checking')
-  const [enrolled, setEnrolled] = useState(false)
-  const [historyOnly, setHistoryOnly] = useState(false)
-  const models = useModelPreloadStatus()
+  const [enrolled, setEnrolled] = useState<boolean | null>(null)
+  const [showHistory, setShowHistory] = useState(false)
   const { t } = useI18n()
   const [storage] = useState(createLocalConversationStorage)
 
   useEffect(() => {
-    startModelPreload()
-  }, [])
-
-  useEffect(() => {
-    if (!prefs.languagesConfirmed) return
     let cancelled = false
     void createCurrentSpeakerEmbeddingStorage()
       .load()
       .then((embedding) => {
-        if (cancelled) return
-        setEnrolled(!!embedding)
-        setStage(embedding ? 'product' : 'enrollment')
+        if (!cancelled) setEnrolled(!!embedding)
       })
       .catch(() => {
-        if (!cancelled) setStage('enrollment')
+        if (!cancelled) setEnrolled(false)
       })
     return () => {
       cancelled = true
     }
-  }, [prefs.languagesConfirmed])
+  }, [])
 
-  const modelsBadge = (
-    <ModelPreloadBadge
-      progress={models.progress}
-      done={models.speaker !== 'loading' && models.vad !== 'loading'}
-      error={models.speaker === 'error' || models.vad === 'error'}
-      label={t('preparing')}
-      errorLabel={t('preparationFailed')}
-    />
-  )
+  if (enrolled === null) {
+    return (
+      <div className="flex min-h-dvh items-center justify-center">
+        <p role="status" className="text-sm text-muted-foreground">{t('preparing')}</p>
+      </div>
+    )
+  }
 
-  if (!prefs.languagesConfirmed) {
+  if (showHistory) return <HistoryPage storage={storage} onBack={() => setShowHistory(false)} />
+
+  if (!enrolled || !prefs.languagesConfirmed) {
     return (
       <>
-        {modelsBadge}
         <OnboardingPage
-          uiLang={prefs.uiLang}
-          conversationLang={prefs.conversationLang}
-          level={prefs.level}
-          onUiLangChange={(uiLang) => onPrefsChange({ ...prefs, uiLang })}
-          onConversationLangChange={(conversationLang) =>
-            onPrefsChange({ ...prefs, conversationLang })
-          }
-          onLevelChange={(level) => onPrefsChange({ ...prefs, level })}
-          onRequestPermissions={async () => {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-            stream.getTracks().forEach((track) => track.stop())
-          }}
-          onConfirm={() => onPrefsChange({ ...prefs, languagesConfirmed: true })}
-        />
-      </>
-    )
-  }
-
-  if (stage === 'checking') {
-    return (
-      <>
-        {modelsBadge}
-        <div className="flex min-h-dvh items-center justify-center">
-          <p className="text-sm text-muted-foreground">{t('preparing')}</p>
-        </div>
-      </>
-    )
-  }
-
-  if (stage === 'enrollment') {
-    return (
-      <>
-        {modelsBadge}
-        <EnrollmentPage
-          conversationLang={prefs.conversationLang}
+          prefs={prefs}
           enrolled={enrolled}
-          onEnrolled={() => setEnrolled(true)}
-          onEnterSession={() => setStage('product')}
-          recordReady={models.speaker === 'ready'}
+          onPrefsChange={onPrefsChange}
+          onComplete={() => {
+            onPrefsChange({ ...prefs, languagesConfirmed: true })
+            setEnrolled(true)
+          }}
         />
-      </>
-    )
-  }
-
-  if (historyOnly) {
-    return (
-      <HistoryPage
-        storage={storage}
-        onBack={() => setHistoryOnly(false)}
-      />
-    )
-  }
-
-  const modelsReady = models.vad === 'ready' && models.speaker === 'ready'
-  const modelsFailed = models.vad === 'error' || models.speaker === 'error'
-  if (!modelsReady) {
-    return (
-      <>
-        {modelsBadge}
-        <div className="flex min-h-dvh items-center justify-center">
-          <div className="space-y-3 text-center">
-            <p className="text-sm text-muted-foreground">
-              {modelsFailed ? t('preparationFailed') : t('preparing')}
-            </p>
-            <Button variant="soft" onClick={() => setHistoryOnly(true)}>
-              {t('history')}
-            </Button>
+        {prefs.languagesConfirmed ? (
+          <div className="fixed bottom-4 right-4">
+            <Button variant="outline" onClick={() => setShowHistory(true)}>{t('history')}</Button>
           </div>
-        </div>
+        ) : null}
       </>
     )
   }
 
-  return (
-    <>
-      {modelsBadge}
-      <WebProductShell
-        prefs={prefs}
-        storage={storage}
-        onPrefsChange={onPrefsChange}
-      />
-    </>
-  )
+  return <WebProductShell prefs={prefs} storage={storage} onPrefsChange={onPrefsChange} />
 }
 
 export default function App() {

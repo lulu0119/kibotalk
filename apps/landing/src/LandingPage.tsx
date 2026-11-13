@@ -1,12 +1,12 @@
 import {
-  ArrowDownToLine,
-  ArrowUpRight,
-  Check,
-  Languages,
-  Pause,
-  Sparkles,
-  Square,
-} from 'lucide-react'
+  ArrowRightUpIcon,
+  CheckIcon,
+  DownloadIcon,
+  PauseDuotoneIcon,
+  SparklesDuotoneIcon,
+  StopDuotoneIcon,
+  TranslateIcon,
+} from '@kibotalk/ui/icons'
 import {
   Badge,
   Button,
@@ -20,14 +20,17 @@ import {
   IslandNavButton,
   IslandSeparator,
   IslandStatus,
+  IslandToggleButton,
   PillTag,
   StickyNoteCard,
 } from '@kibotalk/ui'
 import { copy, locales, type Locale } from './copy'
 
-const githubRepoUrl = 'https://github.com/KiboAI/KiboTalk'
-const webSetupUrl = `${githubRepoUrl}#web`
-const macSetupUrl = `${githubRepoUrl}#macos`
+const githubRepoUrl = 'https://github.com/lulu0119/kibotalk'
+const siteBase = import.meta.env.BASE_URL
+const webUrl = `${siteBase}app/`
+const playgroundUrl = `${siteBase}playground/`
+const macSetupUrl = `${githubRepoUrl}#run-locally`
 const adventurexUrl = 'https://adventure-x.org/'
 const lingguangUrl =
   'https://www.lingguang.com/share/FLASH_APP-47cf7a20-7033-463d-a975-eacb0b0e6c1764'
@@ -38,10 +41,6 @@ const localeShortLabel: Record<Locale, string> = {
   en: 'EN',
 }
 
-function rememberLocale(locale: Locale) {
-  window.localStorage.setItem('kibotalk-landing-language', locale)
-}
-
 function LanguageMenu({ locale }: { locale: Locale }) {
   const content = copy[locale]
 
@@ -49,7 +48,7 @@ function LanguageMenu({ locale }: { locale: Locale }) {
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="outline" size="sm" aria-label={content.localeName}>
-          <Languages aria-hidden />
+          <TranslateIcon aria-hidden />
           <span>{localeShortLabel[locale]}</span>
         </Button>
       </DropdownMenuTrigger>
@@ -58,12 +57,11 @@ function LanguageMenu({ locale }: { locale: Locale }) {
           <DropdownMenuItem key={option} asChild>
             <a
               className="flex items-center justify-between gap-5"
-              href={`/${option}/${window.location.hash}`}
+              href={`${siteBase}${option}/${window.location.hash}`}
               hrefLang={option}
-              onClick={() => rememberLocale(option)}
             >
               {copy[option].localeName}
-              {option === locale ? <Check aria-hidden /> : null}
+              {option === locale ? <CheckIcon aria-hidden /> : null}
             </a>
           </DropdownMenuItem>
         ))}
@@ -78,10 +76,10 @@ function Header({ locale }: { locale: Locale }) {
   return (
     <header className="site-header">
       <div className="page-shell flex h-19 items-center justify-between gap-5">
-        <a href={`/${locale}/`} aria-label="KiboTalk">
+        <a href={`${siteBase}${locale}/`} aria-label="KiboTalk">
           <img
             className="h-auto w-35 sm:w-40"
-            src="/assets/kibotalk-wordmark.svg"
+            src={`${siteBase}assets/kibotalk-wordmark.svg`}
             alt="KiboTalk"
           />
         </a>
@@ -104,9 +102,9 @@ function Header({ locale }: { locale: Locale }) {
         <div className="flex items-center gap-2">
           <LanguageMenu locale={locale} />
           <Button asChild size="sm" className="hidden sm:inline-flex">
-            <a href={webSetupUrl}>
+            <a href={webUrl}>
               {content.actions.web}
-              <ArrowUpRight aria-hidden />
+              <ArrowRightUpIcon aria-hidden />
             </a>
           </Button>
         </div>
@@ -134,21 +132,25 @@ function Hero({ locale }: { locale: Locale }) {
       <div className="hero-actions hero-enter hero-enter-delay-3">
         <div>
           <Button asChild size="lg">
-            <a href={webSetupUrl}>
+            <a href={webUrl}>
               {actions.web}
-              <ArrowUpRight aria-hidden />
+              <ArrowRightUpIcon aria-hidden />
             </a>
           </Button>
-          <p>{hero.webNote}</p>
         </div>
         <div>
           <Button asChild variant="soft" size="lg">
             <a href={macSetupUrl} target="_blank" rel="noreferrer">
-              <ArrowDownToLine aria-hidden />
+              <DownloadIcon aria-hidden />
               {actions.mac}
             </a>
           </Button>
           <p>{hero.macNote}</p>
+        </div>
+        <div>
+          <Button asChild variant="outline" size="lg">
+            <a href={playgroundUrl}>{actions.playground}</a>
+          </Button>
         </div>
       </div>
     </section>
@@ -172,7 +174,7 @@ function SceneMap({ locale }: { locale: Locale }) {
         <div className="scene-map">
           <img
             className="map-image"
-            src="/assets/japan-scenes-map.png"
+            src={`${siteBase}assets/japan-scenes-map.png`}
             alt={scenes.ariaLabel}
           />
         </div>
@@ -200,17 +202,17 @@ function ProductDemo({ locale }: { locale: Locale }) {
       </div>
       <StickyNoteCard candidates={candidates} className="!w-full !max-w-none" />
       <IslandBar className="mx-auto mt-5 w-fit max-w-full">
-        <IslandStatus label={product.listening} pulse />
+        <IslandStatus label={product.listening} toneClassName="bg-primary-soft-strong" pulse />
         <IslandSeparator />
-        <IslandNavButton label="Pause">
-          <Pause aria-hidden />
-        </IslandNavButton>
+        <IslandToggleButton on label="Pause">
+          <PauseDuotoneIcon />
+        </IslandToggleButton>
         <IslandNavButton label="Stop">
-          <Square aria-hidden />
+          <StopDuotoneIcon />
         </IslandNavButton>
-        <IslandNavButton label="AI suggestions">
-          <Sparkles aria-hidden />
-        </IslandNavButton>
+        <IslandToggleButton on label="AI suggestions">
+          <SparklesDuotoneIcon />
+        </IslandToggleButton>
       </IslandBar>
     </div>
   )
@@ -256,7 +258,7 @@ function StorySection({ locale }: { locale: Locale }) {
               </div>
               <img
                 className="production-wordmark"
-                src="/assets/kibotalk-wordmark-no-border.svg"
+                src={`${siteBase}assets/kibotalk-wordmark-no-border.svg`}
                 alt="KiboTalk"
               />
               <h3>{story.productionTitle}</h3>
@@ -264,15 +266,15 @@ function StorySection({ locale }: { locale: Locale }) {
               <div className="capability-list">
                 {story.capabilities.map((capability) => (
                   <PillTag key={capability}>
-                    <Check aria-hidden />
+                    <CheckIcon aria-hidden />
                     {capability}
                   </PillTag>
                 ))}
               </div>
               <Button asChild>
-                <a href={webSetupUrl}>
+                <a href={webUrl}>
                   {actions.web}
-                  <ArrowUpRight aria-hidden />
+                  <ArrowRightUpIcon aria-hidden />
                 </a>
               </Button>
             </CardContent>
@@ -301,16 +303,16 @@ function MissionSection({ locale }: { locale: Locale }) {
         <div className="mission-actions">
           <div>
             <Button asChild size="lg">
-              <a href={webSetupUrl}>
+              <a href={webUrl}>
                 {actions.web}
-                <ArrowUpRight aria-hidden />
+                <ArrowRightUpIcon aria-hidden />
               </a>
             </Button>
           </div>
           <div className="desktop-download">
             <Button asChild variant="soft" size="lg">
               <a href={macSetupUrl} target="_blank" rel="noreferrer">
-                <ArrowDownToLine aria-hidden />
+                <DownloadIcon aria-hidden />
                 {actions.mac}
               </a>
             </Button>
@@ -332,23 +334,24 @@ function Footer({ locale }: { locale: Locale }) {
         <div>
           <img
             className="footer-wordmark"
-            src="/assets/kibotalk-wordmark.svg"
+            src={`${siteBase}assets/kibotalk-wordmark.svg`}
             alt="KiboTalk"
           />
           <p>{footer.statement}</p>
         </div>
         <div className="footer-links">
+          <a href={playgroundUrl}>{actions.playground}</a>
           <a href={githubRepoUrl} target="_blank" rel="noreferrer">
             {footer.github}
-            <ArrowUpRight aria-hidden />
+            <ArrowRightUpIcon aria-hidden />
           </a>
           <a href={adventurexUrl} target="_blank" rel="noreferrer">
             {footer.adventurex}
-            <ArrowUpRight aria-hidden />
+            <ArrowRightUpIcon aria-hidden />
           </a>
           <a href={lingguangUrl} target="_blank" rel="noreferrer">
             {footer.original}
-            <ArrowUpRight aria-hidden />
+            <ArrowRightUpIcon aria-hidden />
           </a>
           <a href="#top">{actions.top}</a>
         </div>

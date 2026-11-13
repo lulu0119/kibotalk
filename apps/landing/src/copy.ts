@@ -13,6 +13,7 @@ type LandingCopy = {
   actions: {
     web: string
     mac: string
+    playground: string
     top: string
   }
   hero: {
@@ -22,7 +23,6 @@ type LandingCopy = {
     statementLead: string
     statementStrong: string
     tagline: string
-    webNote: string
     macNote: string
   }
   scenes: {
@@ -82,8 +82,9 @@ export const copy: Record<Locale, LandingCopy> = {
       mission: '我们的使命',
     },
     actions: {
-      web: 'Web 版运行说明',
+      web: '打开网页版',
       mac: 'macOS 版安装说明',
+      playground: '打开 Playground',
       top: '回到顶部',
     },
     hero: {
@@ -93,7 +94,6 @@ export const copy: Record<Locale, LandingCopy> = {
       statementLead: '翻译让你听懂，',
       statementStrong: 'KiboTalk 让你答得上来。',
       tagline: 'AI 提示，你开口。',
-      webNote: '在本机浏览器运行',
       macNote: 'Apple Silicon · macOS 13+',
     },
     scenes: {
@@ -136,8 +136,8 @@ export const copy: Record<Locale, LandingCopy> = {
       body: '人们缺的往往不是翻译，而是对话现场能说出口的下一句。KiboTalk 会在对话进行时给出可以直接开口的建议。',
       productionLabel: '现在的产品',
       productionTitle: 'KiboTalk 自研栈',
-      productionBody: '会话历史保存在本机，实时转写和回复由你配置的服务提供。',
-      capabilities: ['端侧语音活动检测', '声纹验证', '实时转写', '本机历史', 'Web / PWA / 桌面端'],
+      productionBody: '转写在设备上完成，回复建议使用你配置的模型服务。',
+      capabilities: ['语音活动检测', '声纹验证', '实时转写', '会话历史', 'Web / PWA / 桌面端'],
     },
     mission: {
       eyebrow: 'READY FOR THE REAL CONVERSATION',
@@ -163,8 +163,9 @@ export const copy: Record<Locale, LandingCopy> = {
       mission: '私たちの使命',
     },
     actions: {
-      web: 'Web版の起動手順',
+      web: 'Web版を開く',
       mac: 'macOS版のセットアップ',
+      playground: 'Playgroundを開く',
       top: 'ページ上部へ',
     },
     hero: {
@@ -174,7 +175,6 @@ export const copy: Record<Locale, LandingCopy> = {
       statementLead: '翻訳は理解を助ける。',
       statementStrong: 'KiboTalkは返事を助ける。',
       tagline: 'AIがヒントを。話すのは、あなた。',
-      webNote: 'ローカルのブラウザで動作',
       macNote: 'Apple Silicon · macOS 13以降',
     },
     scenes: {
@@ -217,8 +217,8 @@ export const copy: Record<Locale, LandingCopy> = {
       body: '必要なのは翻訳だけではなく、会話の現場で口にできる「次の一言」。KiboTalkは会話中に、その場で言える返事を提案します。',
       productionLabel: '現在のプロダクト',
       productionTitle: 'KiboTalk 自社開発スタック',
-      productionBody: '履歴は端末に保存され、文字起こしと返事の提案には設定したサービスを使います。',
-      capabilities: ['端末上の音声区間検出', '話者照合', 'リアルタイム文字起こし', '端末内の履歴', 'Web / PWA / デスクトップ'],
+      productionBody: '文字起こしは端末上で行い、返信候補には設定したモデルサービスを使います。',
+      capabilities: ['音声区間検出', '話者照合', 'リアルタイム文字起こし', '会話履歴', 'Web / PWA / デスクトップ'],
     },
     mission: {
       eyebrow: 'READY FOR THE REAL CONVERSATION',
@@ -244,8 +244,9 @@ export const copy: Record<Locale, LandingCopy> = {
       mission: 'Our mission',
     },
     actions: {
-      web: 'Set up the Web app',
+      web: 'Open the Web app',
       mac: 'Set up on macOS',
+      playground: 'Open Playground',
       top: 'Back to top',
     },
     hero: {
@@ -255,7 +256,6 @@ export const copy: Record<Locale, LandingCopy> = {
       statementLead: 'Translation helps you understand. ',
       statementStrong: 'KiboTalk helps you answer.',
       tagline: 'AI gives the cue. You speak.',
-      webNote: 'Runs locally in your browser',
       macNote: 'Apple Silicon · macOS 13+',
     },
     scenes: {
@@ -298,8 +298,8 @@ export const copy: Record<Locale, LandingCopy> = {
       body: 'KiboTalk suggests lines you can say while the conversation is still happening.',
       productionLabel: 'The product today',
       productionTitle: 'The KiboTalk stack',
-      productionBody: 'History stays on your device. Choose the providers for transcription and reply suggestions.',
-      capabilities: ['On-device voice activity detection', 'Speaker verification', 'Live transcription', 'On-device history', 'Web / PWA / desktop'],
+      productionBody: 'Transcription runs on your device. Reply suggestions use the model service you configure.',
+      capabilities: ['Voice activity detection', 'Speaker verification', 'Live transcription', 'Session history', 'Web / PWA / desktop'],
     },
     mission: {
       eyebrow: 'READY FOR THE REAL CONVERSATION',

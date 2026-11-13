@@ -1,309 +1,142 @@
 import { useEffect, useRef, useState } from 'react'
-import { createVAD } from '@kibotalk/audio/vad'
-import type { VAD } from '@kibotalk/audio/vad'
-import { createSegmentAggregator } from '@kibotalk/audio/aggregator'
-import type { SegmentAggregator, AggregatedSegment } from '@kibotalk/audio/aggregator'
+import { AudioSource, createSpeechEngine, type SpeechEngine } from '@kibotalk/app-shared'
+import { createSegmentAggregator, type AggregatedSegment } from '@kibotalk/audio/aggregator'
+import { encodeWav } from '@kibotalk/audio'
+import { Button, Card, CardContent } from '@kibotalk/ui'
+import { MergeParamsFields, VadParamsFields } from './components/ConfigFields'
 import { useConfig } from './config-store'
-import {
-  Badge,
-  Button,
-  ScrollArea,
-} from '@kibotalk/ui'
-import {
-  AudioLines,
-  ChartLine,
-  ListTree,
-  Loader2,
-  Mic,
-  Play,
-  Settings2,
-  Square,
-} from 'lucide-react'
-import { AudioSource, attachAudioIoSpans, createSileroInfer, SILERO_VARIANTS } from '@kibotalk/app-shared'
-import {
-  VadParamsFields,
-  MergeParamsFields,
-  VadModelSelect,
-} from './components/ConfigFields'
-import { StageShell } from './components/StageShell'
-
-type Segment = {
-  id: number
-  duration: number
-  buffer: Float32Array
-}
-
-type MergedSegment = {
-  id: number
-  duration: number
-  buffer: Float32Array
-  constituents: { buffer: Float32Array; duration: number }[]
-}
-
-const STATUS_VARIANT = { idle: 'secondary', speech: 'default', silence: 'outline' } as const
 
 export default function VadPanel() {
-  const [running, setRunning] = useState(false)
-  const [loading, setLoading] = useState('')
+  const [status, setStatus] = useState<'idle' | 'loading' | 'speech' | 'silence'>('idle')
   const [error, setError] = useState('')
-  const [status, setStatus] = useState<'idle' | 'speech' | 'silence'>('idle')
-  const [segments, setSegments] = useState<Segment[]>([])
-  const [mergedSegments, setMergedSegments] = useState<MergedSegment[]>([])
-  const [prob, setProb] = useState(0)
-  const [probHistory, setProbHistory] = useState<number[]>([])
+  const [segments, setSegments] = useState<AggregatedSegment[]>([])
+  const capture = useRef<{
+    controller: AbortController
+    audio: AudioSource
+    engine?: SpeechEngine
+    aggregator: ReturnType<typeof createSegmentAggregator>
+  } | null>(null)
+  const playing = useRef<{ audio: HTMLAudioElement; url: string } | null>(null)
 
-  const speechThreshold = useConfig((s) => s.speechThreshold)
-  const exitThreshold = useConfig((s) => s.exitThreshold)
-  const minSilenceDurationMs = useConfig((s) => s.minSilenceDurationMs)
-  const minSpeechDurationMs = useConfig((s) => s.minSpeechDurationMs)
-  const pauseMs = useConfig((s) => s.pauseMs)
-  const mergeMaxMs = useConfig((s) => s.mergeMaxMs)
-
-  const audioRef = useRef<AudioSource | null>(null)
-  const vadRef = useRef<VAD | null>(null)
-  const aggregatorRef = useRef<SegmentAggregator | null>(null)
-  const segIdRef = useRef(0)
-  const mergedIdRef = useRef(0)
-  const sampleRateRef = useRef(16000)
-  const playCtxRef = useRef<AudioContext | null>(null)
-
-  useEffect(() => {
-    vadRef.current?.updateConfig({
-      speechThreshold,
-      exitThreshold,
-      minSilenceDurationMs,
-      minSpeechDurationMs,
-      speechPadMs: 0,
-    })
-  }, [speechThreshold, exitThreshold, minSilenceDurationMs, minSpeechDurationMs])
-
-  useEffect(() => {
-    aggregatorRef.current?.updateConfig({ pauseMs, maxMs: mergeMaxMs })
-  }, [pauseMs, mergeMaxMs])
-
-  useEffect(() => {
-    return () => {
-      playCtxRef.current?.close().catch(() => {})
-      playCtxRef.current = null
-    }
-  }, [])
-
-  function playSegment(buffer: Float32Array) {
-    const sampleRate = sampleRateRef.current
-    let ctx = playCtxRef.current
-    if (!ctx || ctx.state === 'closed') {
-      ctx = new AudioContext({ sampleRate })
-      playCtxRef.current = ctx
-    }
-    void ctx.resume()
-    const audioBuffer = ctx.createBuffer(1, buffer.length, sampleRate)
-    audioBuffer.getChannelData(0).set(buffer)
-    const src = ctx.createBufferSource()
-    src.buffer = audioBuffer
-    src.connect(ctx.destination)
-    src.start()
+  function stop() {
+    const current = capture.current
+    capture.current = null
+    if (!current) return
+    current.audio.stop()
+    current.controller.abort()
+    current.engine?.dispose()
+    current.aggregator.flush()
+    current.aggregator.dispose()
+    setStatus('idle')
   }
 
+  function stopPlayback() {
+    playing.current?.audio.pause()
+    if (playing.current) URL.revokeObjectURL(playing.current.url)
+    playing.current = null
+  }
+
+  useEffect(() => () => {
+    stop()
+    stopPlayback()
+  }, [])
+
   async function start() {
-    setError('')
-    setLoading('正在启动麦克风与音频处理…')
+    if (capture.current) return
+    setStatus('loading')
     setSegments([])
-    setMergedSegments([])
-    setProb(0)
-    setProbHistory([])
-    setStatus('idle')
+    setError('')
+    const controller = new AbortController()
+    const audio = new AudioSource({ onDeviceEnded: stop })
+    const config = useConfig.getState()
+    const aggregator = createSegmentAggregator({
+      sampleRate: audio.sampleRate, pauseMs: config.pauseMs, maxMs: config.mergeMaxMs,
+    })
+    aggregator.onFlush((segment) => setSegments((previous) => [...previous.slice(-29), segment]))
+    const current = { controller, audio, aggregator, engine: undefined as SpeechEngine | undefined }
+    capture.current = current
     try {
-      const audio = new AudioSource()
-      audioRef.current = audio
-      sampleRateRef.current = audio.sampleRate
-      const cfg = useConfig.getState()
-      const infer = await createSileroInfer(
-        SILERO_VARIANTS.find((v) => v.id === cfg.vadVariantId) ?? SILERO_VARIANTS[0],
-        audio.sampleRate,
-      )
-      const vad = createVAD(infer, { sampleRate: audio.sampleRate })
-      vadRef.current = vad
-
-      const aggregator = createSegmentAggregator({
-        sampleRate: audio.sampleRate,
-        pauseMs: cfg.pauseMs,
-        maxMs: cfg.mergeMaxMs,
-      })
-      aggregator.onFlush((merged: AggregatedSegment) => {
-        const id = ++mergedIdRef.current
-        const buffer = merged.pcm
-        const duration = buffer.length / sampleRateRef.current
-        const constituents = merged.segments.map((s) => ({
-          buffer: s.buffer,
-          duration: s.buffer.length / sampleRateRef.current,
-        }))
-        setMergedSegments((prev) => [...prev, { id, duration, buffer, constituents }].slice(-20))
-      })
-      aggregatorRef.current = aggregator
-      attachAudioIoSpans(vad, aggregator, audio.sampleRate)
-
-      vad.on('prob', (p) => {
-        setProb(p)
-        setProbHistory((prev) => [...prev, p].slice(-120))
-      })
-      vad.on('speech-start', () => setStatus('speech'))
-      vad.on('speech-end', () => setStatus('silence'))
-      vad.on('speech-ready', (e) => {
-        const id = ++segIdRef.current
-        setSegments((prev) => [...prev, { id, duration: e.duration, buffer: e.buffer }].slice(-20))
-        aggregator.feed({
-          buffer: e.buffer,
-          speaker: 'other',
-          startedAt: e.startedAt,
-          endedAt: e.startedAt + e.duration * 1000,
+      const engine = await createSpeechEngine(undefined, {
+        threshold: config.speechThreshold,
+        minSpeechMs: config.minSpeechDurationMs,
+        minSilenceMs: config.minSilenceDurationMs,
+        maxSpeechMs: config.mergeMaxMs,
+      }, 1, controller.signal)
+      current.engine = engine
+      controller.signal.throwIfAborted()
+      let wasSpeaking = false
+      await audio.start((pcm) => {
+        void engine.process(0, pcm).then(({ speaking, segments }) => {
+          if (controller.signal.aborted) return
+          setStatus(speaking ? 'speech' : 'silence')
+          if (speaking !== wasSpeaking) {
+            if (speaking) aggregator.hold()
+            else aggregator.resume()
+            wasSpeaking = speaking
+          }
+          for (const segment of segments) {
+            aggregator.feed({
+              buffer: segment.pcm, speaker: 'other',
+              startedAt: segment.startedAt, endedAt: segment.endedAt,
+            })
+          }
+        }).catch((cause) => {
+          if (controller.signal.aborted) return
+          setError(String(cause))
+          stop()
         })
-      })
-      await audio.start((chunk) => void vad.processAudio(chunk))
-      setRunning(true)
-      setLoading('')
-    } catch (e) {
-      setError((e as Error).message)
-      setLoading('')
+      }, controller.signal)
+      controller.signal.throwIfAborted()
+      setStatus('silence')
+    } catch (cause) {
+      if (controller.signal.aborted) return
+      setError(String(cause))
       stop()
     }
   }
 
-  function stop() {
-    aggregatorRef.current?.flush()
-    aggregatorRef.current?.dispose()
-    aggregatorRef.current = null
-    audioRef.current?.stop()
-    audioRef.current = null
-    vadRef.current = null
-    setRunning(false)
-    setStatus('idle')
+  function play(segment: AggregatedSegment) {
+    stopPlayback()
+    const url = URL.createObjectURL(new Blob([encodeWav(segment.pcm, 16000)], { type: 'audio/wav' }))
+    const audio = new Audio(url)
+    playing.current = { audio, url }
+    audio.onended = stopPlayback
+    void audio.play().catch(stopPlayback)
   }
 
   return (
-    <StageShell
-      stage={
-        <div className="flex h-full flex-col items-center justify-center gap-8 p-8">
-          <div className="space-y-1 text-center">
-            <h2 className="inline-flex items-center gap-2 text-xl font-semibold">
-              <AudioLines className="size-5" />
-              VAD 检测
-            </h2>
-            <p className="text-sm text-muted-foreground">麦克风 → Silero · 验证一句切段</p>
-          </div>
-          <div className="flex flex-wrap items-center justify-center gap-3">
-            {!running ? (
-              <Button size="lg" onClick={start} disabled={!!loading}>
-                {loading ? <Loader2 className="size-4 animate-spin" /> : <Play className="size-4" />}
-                {loading || '开始检测'}
-              </Button>
+    <Card>
+      <CardContent className="grid gap-6 pt-6 md:grid-cols-2">
+        <div className="space-y-4">
+          <h2 className="font-semibold">Silero VAD v5</h2>
+          <div className="flex flex-wrap items-center gap-3 text-sm">
+            {status === 'idle' ? (
+              <Button onClick={() => void start()}>开始检测</Button>
             ) : (
-              <Button size="lg" variant="destructive" onClick={stop}>
-                <Square className="size-4" />
-                停止
-              </Button>
+              <Button variant="destructive" onClick={stop}>停止</Button>
             )}
-            <Badge variant={STATUS_VARIANT[status]}>
-              {status === 'speech' ? '说话中' : status === 'silence' ? '静音' : '空闲'}
-            </Badge>
-            <span className="inline-flex items-center gap-1 text-sm text-muted-foreground">
-              <Mic className="size-3.5" />
-              已切段 {segments.length}
-            </span>
+            {status === 'loading' ? '正在加载模型…' : status === 'speech' ? '检测到语音' : status === 'silence' ? '静音' : null}
           </div>
-          <div className="w-full max-w-md space-y-2">
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">语音概率</span>
-              <span className="tabular-nums">{(prob * 100).toFixed(1)}%</span>
-            </div>
-            <div className="relative h-3 w-full overflow-hidden rounded-full bg-muted">
-              <div
-                className={`h-full transition-[width] duration-75 ${
-                  prob > speechThreshold
-                    ? 'bg-emerald-500'
-                    : prob > speechThreshold * 0.5
-                      ? 'bg-primary'
-                      : 'bg-muted-foreground/30'
-                }`}
-                style={{ width: `${Math.min(100, prob * 100)}%` }}
-              />
-            </div>
-          </div>
-          {error ? <p className="text-sm text-destructive">{error}</p> : null}
+          {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+          <VadParamsFields disabled={status !== 'idle'} />
+          <MergeParamsFields disabled={status !== 'idle'} />
         </div>
-      }
-      debug={
-        <ScrollArea className="h-full pr-2">
-          <div className="space-y-5 pb-6">
-            <div className="space-y-3">
-              <VadModelSelect disabled={running} />
-            </div>
-            <div className="space-y-2">
-              <p className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-                <Settings2 className="size-3.5" />
-                参数
-              </p>
-              <div className="grid gap-3">
-                <VadParamsFields />
-                <MergeParamsFields />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <p className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-                <ChartLine className="size-3.5" />
-                概率曲线
-              </p>
-              <div className="rounded-md border bg-muted/30 p-1">
-                <svg viewBox="0 0 120 40" preserveAspectRatio="none" className="h-16 w-full">
-                  <line
-                    x1={0} x2={120} y1={40 - speechThreshold * 40} y2={40 - speechThreshold * 40}
-                    stroke="currentColor" strokeWidth={0.5} strokeDasharray="2 2" className="text-emerald-600"
-                  />
-                  <line
-                    x1={0} x2={120} y1={40 - exitThreshold * 40} y2={40 - exitThreshold * 40}
-                    stroke="currentColor" strokeWidth={0.5} strokeDasharray="2 2" className="text-destructive" opacity={0.6}
-                  />
-                  {probHistory.length > 1 && (
-                    <polyline
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth={1}
-                      points={probHistory
-                        .map((p, i) => `${(i / (probHistory.length - 1)) * 120},${40 - p * 40}`)
-                        .join(' ')}
-                    />
-                  )}
-                </svg>
-              </div>
-            </div>
-            <div className="space-y-2">
-              <p className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-                <ListTree className="size-3.5" />
-                合并片段
-              </p>
-              {mergedSegments.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  停顿 {pauseMs}ms 以上会触发一次合并
-                </p>
-              ) : (
-                <ol className="space-y-3 text-sm">
-                  {[...mergedSegments].reverse().map((m) => (
-                    <li key={m.id} className="space-y-2 rounded-md border p-3">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-medium">#{m.id}</span>
-                        <span className="text-muted-foreground">{(m.duration * 1000).toFixed(0)} ms</span>
-                        <span className="text-muted-foreground">{m.constituents.length} 段</span>
-                        <Button variant="outline" size="sm" className="h-6 px-2 text-xs" onClick={() => playSegment(m.buffer)}>
-                          播放
-                        </Button>
-                      </div>
-                    </li>
-                  ))}
-                </ol>
-              )}
-            </div>
-          </div>
-        </ScrollArea>
-      }
-    />
+        <div className="space-y-3">
+          <h2 className="font-semibold">合并片段</h2>
+          {segments.length ? (
+            <ol className="space-y-2">
+              {[...segments].reverse().map((segment) => (
+                <li key={segment.startedAt} className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-3 text-sm">
+                  <span>{Math.round(segment.pcm.length / 16)} ms · {segment.segments.length} 段</span>
+                  <Button size="sm" variant="outline" onClick={() => play(segment)}>播放</Button>
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <p className="text-sm text-muted-foreground">检测到的语音片段会显示在这里，可以回放。</p>
+          )}
+        </div>
+      </CardContent>
+    </Card>
   )
 }

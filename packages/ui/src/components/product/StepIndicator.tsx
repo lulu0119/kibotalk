@@ -1,4 +1,4 @@
-import { Check } from 'lucide-react'
+import { CheckIcon } from '../../icons'
 import { cn } from '../../lib/utils'
 
 export type Step = {
@@ -34,7 +34,7 @@ export function StepIndicator({ steps, current, className }: StepIndicatorProps)
                 !done && !active && 'bg-foreground/6 text-foreground/40',
               )}
             >
-              {done ? <Check className="size-3" /> : i + 1}
+              {done ? <CheckIcon className="size-3" /> : i + 1}
             </span>
             {i < steps.length - 1 ? <span className="h-0.5 flex-1 bg-foreground/6" /> : null}
           </div>

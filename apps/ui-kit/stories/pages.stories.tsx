@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import type { ConversationSession } from '@kibotalk/conversation'
 import { InMemoryConversationStorage } from '@kibotalk/conversation'
@@ -97,38 +97,21 @@ export const IslandPageRunning: Story = {
 }
 
 export const OnboardingPageDemo: Story = {
-  render: () => (
-    <OnboardingPage
-      uiLang="zh"
-      conversationLang="ja"
-      level="beginner"
-      onUiLangChange={noop}
-      onConversationLangChange={noop}
-      onLevelChange={noop}
-      onConfirm={noop}
-    />
-  ),
+  render: function OnboardingDemo() {
+    const [prefs, setPrefs] = useState({ ...defaultProductPrefs, uiLang: 'zh' as const })
+    return <OnboardingPage prefs={prefs} enrolled={false} onPrefsChange={setPrefs} onComplete={noop} />
+  },
 }
 
 export const EnrollmentPageIntro: Story = {
   render: () => (
-    <EnrollmentPage
-      conversationLang="ja"
-      enrolled={false}
-      onEnrolled={noop}
-      onEnterSession={noop}
-    />
+    <EnrollmentPage conversationLang="ja" onEnterSession={noop} />
   ),
 }
 
 export const EnrollmentPageDone: Story = {
   render: () => (
-    <EnrollmentPage
-      conversationLang="ja"
-      enrolled
-      onEnrolled={noop}
-      onEnterSession={noop}
-    />
+    <EnrollmentPage conversationLang="ja" enrolled onEnterSession={noop} />
   ),
 }
 

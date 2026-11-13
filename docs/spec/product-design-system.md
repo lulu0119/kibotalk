@@ -29,23 +29,13 @@
 | `--sticky-foreground` | 便利贴上的墨色文字，亮/暗模式下**固定**为暖棕色，不随主题反相（便利贴永远亮黄纸+深墨字） |
 | `--island` / `--island-foreground` | 桌面 Island 的暗色玻璃底，独立于页面亮暗主题 |
 
-### 2.2 阴影分级（"selectable token"共用语法）
+### 2.2 阴影
 
-所有**可选中/切换的控件**（chip、seg、switch、icon-btn、pill-tag、btn）共享同一套扁平阴影语法，不允许再发明第三档：
+`Button`、`Input`、`SelectTrigger` 和 `Textarea` 使用扁平表面。按钮用语义色表达操作，焦点用统一的 ring。卡片用 Tailwind 的 `shadow-xs`。便利贴保留专用纸面阴影。
 
-| Token | 用途 |
-|-------|------|
-| `--shadow-tier0` | 常态（未选中/未激活） |
-| `--shadow-tier1` | 选中/激活态（小尺寸） |
-| `--shadow-tier1-lg` | 选中/激活态（大按钮、主 CTA） |
-| `--shadow-panel` | 面板级容器（工具条、侧栏、对话框） |
-| `--shadow-note` | 便利贴卡专用（更大扩散，暖色调）——`.island-stage` 作用域内会覆盖为更轻的版本，见 §2.5 |
+### 2.3 尺寸与圆角
 
-三档均为**纯色彩/对比度表达状态**，禁止用 `translateY` 或多层描边模拟厚度——切换态靠颜色深浅、不靠"浮起/压下"的立体感。
-
-### 2.3 圆角
-
-`--radius`（15px 基准）通过 shadcn 惯例派生 `--radius-sm/md/lg/xl`；按钮与 pill 类控件直接用 `rounded-full`，不走这套圆角阶梯。
+共用 Tailwind 默认的间距、尺寸和圆角刻度。按钮、输入框和选择框默认 `h-10 rounded-md`。小按钮用 `h-9`，大按钮用 `h-11`。
 
 ### 2.4 动效
 
@@ -57,24 +47,24 @@
 |----|------|
 | `.paper-sheet` / `.product-stage` | 纸感面板容器（工具条、侧栏、对话框） |
 | `.desk-surface` | 便利贴堆叠所在的桌面底 |
-| `.island-bar` | 桌面 Island 暗色玻璃工具条——**无常驻阴影**（漂浮在透明桌面上，大范围模糊阴影会显得像一块脱节的黑斑）；边框常态几乎不可见，仅 `:hover` 时变亮，提示"这里可交互" |
+| `.island-bar` | 桌面 Island 的深灰胶囊工具条，使用 Solar Line Duotone 图标。默认两层灰色，已开启的控件使用浅金和浅灰，悬停显示淡灰底 |
 | `.glass-chip` | Island 实时字幕条——同一玻璃家族，药丸形、无阴影 |
 | `.sticky-note` / `.sticky-note-placeholder` / `.sticky-note-interactive` | 便利贴卡本体与交互态（playground / apps/web：不透明页面背景之上，保留完整纸感阴影） |
 | `.island-stage` | 包一层在 `IslandPage`（及 playground 悬浮预览）外层，把其内 `.sticky-note` 的阴影降级为轻量版 + 边框仅 hover 显现——同一张卡在"漂浮在桌面上" vs "铺在纸面舞台上"两种语境下阴影语义不同，靠这层作用域类区分，不新增卡片变体 |
 
 ## 3. shadcn 基础组件（`packages/ui/src/components/ui/`）
 
-现有 23 个：`accordion`、`badge`、`button`、`card`、`collapsible`、`dialog`、`dropdown-menu`、`input`、`label`、`popover`、`progress`、`scroll-area`、`select`、`separator`、`sheet`、`skeleton`、`slider`、`sonner`（Toaster/toast）、`switch`、`tabs`、`textarea`、`toggle`、`toggle-group`、`tooltip`。
+基础组件包括 `accordion`、`badge`、`button`、`card`、`collapsible`、`command`、`dialog`、`dropdown-menu`、`input`、`label`、`popover`、`progress`、`resizable`、`scroll-area`、`search-select`、`select`、`separator`、`sheet`、`skeleton`、`slider`、`sonner`（Toaster/toast）、`switch`、`tabs`、`textarea`、`toggle`、`toggle-group`、`tooltip`。
 
 改样式改这些源文件（如 `button.tsx` 的 `cva` variants），不要在 `apps/*` 里平行重造一套。缺组件先 `shadcn add` 进本包再导出——见 AGENTS.md。
 
 ### 3.1 `Button` variants
 
-`default`（主 CTA，`--shadow-tier1-lg` + 黄色渐变面）、`soft`（常显软黄二级操作）、`ghost`、`outline`、`secondary`、`destructive`、`link`。大小按钮共享同一套渐变面，没有为"更重要的按钮"单开一档。
+`default` 用品牌色，`soft` 用强调色，`destructive` 用危险色。`outline`、`secondary`、`ghost` 和 `link` 沿用同一套尺寸和焦点样式。
 
 ### 3.2 `ToggleGroup` / `ToggleGroupItem`
 
-一个组件覆盖两种视觉上等价的场景：语言选择的 chip 行（`variant="chip"`，每项等宽撑满）与水平/等级的分段控件（默认 `variant`，胶囊底 + 选中态浮起）。原型中曾是两套实现（chip / seg），现在统一成一个，避免重复。
+一个组件覆盖两种视觉上等价的场景：语言选择的 chip 行（`variant="chip"`，每项等宽撑满）与水平/等级的分段控件（默认 `variant`，胶囊底 + 品牌色选中态）。原型中曾是两套实现（chip / seg），现在统一成一个，避免重复。
 
 ## 4. 产品专属组件（`packages/ui/src/components/product/`）
 

@@ -1,3 +1,4 @@
+import type { TraceSink } from '@proj-airi/trace-kit'
 import type { ConversationStorage, ConversationTurn, ReplyCandidate } from '@kibotalk/conversation'
 import { envNumber } from './env'
 
@@ -46,6 +47,7 @@ export type CandidateField = 'meaning' | 'targetText' | 'reading'
  * incrementally, `candidate-done` seals a candidate, `done` ends the stream.
  */
 export type CandidateStreamEvent =
+  | { type: 'first-token' }
   | { type: 'candidate-start'; index: number }
   | { type: 'candidate-delta'; index: number; field: CandidateField; delta: string }
   | { type: 'candidate-done'; index: number; candidate: ReplyCandidate }
@@ -91,6 +93,8 @@ export type PipelineEventHandler = (event: PipelineEvent) => void
 
 export type PipelineDeps = {
   llm: LlmClient
+  shouldGenerateReply?: () => boolean
+  trace?: TraceSink
   conversation: ConversationStorage
   config?: Partial<PipelineConfig>
   /** Injectable id generator for deterministic tests. */

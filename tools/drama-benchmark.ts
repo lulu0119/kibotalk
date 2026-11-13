@@ -215,7 +215,7 @@ async function vadGrid() {
   const pcm = await readPcm16Wav(manifest.audio)
 
   const { env } = await import(
-    '../packages/app-shared/node_modules/@huggingface/transformers/dist/transformers.node.mjs'
+    '@huggingface/transformers'
   )
   env.allowLocalModels = false
   env.allowRemoteModels = true
@@ -223,7 +223,7 @@ async function vadGrid() {
   env.useFSCache = true
   env.cacheDir = `${resolve('apps/desktop/resources/models')}/`
   const { createSileroInfer, SILERO_VARIANTS } = await import(
-    '../packages/app-shared/src/audio/silero-vad'
+    './silero-vad'
   )
   const infer = await createSileroInfer(SILERO_VARIANTS[0], 16000)
   const probabilities: number[] = []

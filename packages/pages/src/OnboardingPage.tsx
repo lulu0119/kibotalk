@@ -1,12 +1,20 @@
-import { useState } from 'react'
-import type { AppLanguage, LearnerLevel, UiLanguage } from '@kibotalk/conversation'
-import { languageLabel, levelLabel, useI18n } from '@kibotalk/app-shared'
+import { useEffect, useMemo, useState } from 'react'
+import type { AppLanguage, UiLanguage } from '@kibotalk/conversation'
+import {
+  downloadTranscriptionModel,
+  languageLabel,
+  prepareBaseSpeechModels,
+  saveTranscriptionModel,
+  selectTranscriptionModel,
+  transcriptionModels,
+  useI18n,
+  type LanguagePrefs,
+  type TranscriptionModel,
+} from '@kibotalk/app-shared'
 import {
   Button,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
+  Label,
+  Progress,
   Select,
   SelectContent,
   SelectItem,
@@ -16,111 +24,159 @@ import {
   ToggleGroupItem,
   WizardScreen,
 } from '@kibotalk/ui'
-import { ArrowRight, Languages, Loader2 } from 'lucide-react'
+import { ArrowRightIcon, TranslateIcon } from '@kibotalk/ui/icons'
+import { EnrollmentPage } from './EnrollmentPage'
+import { TranscriptionModelPicker } from './TranscriptionModelPicker'
 
-const LANGUAGES: AppLanguage[] = ['ja', 'en', 'zh']
-const LEVELS: LearnerLevel[] = ['beginner', 'intermediate', 'advanced']
+const languages: AppLanguage[] = ['ja', 'en', 'zh']
 
-export type OnboardingPageProps = {
-  uiLang: UiLanguage
-  conversationLang: AppLanguage
-  level: LearnerLevel
-  onUiLangChange: (lang: UiLanguage) => void
-  onConversationLangChange: (lang: AppLanguage) => void
-  onLevelChange: (level: LearnerLevel) => void
-  onConfirm: () => void
-  onRequestPermissions?: () => Promise<void>
-  embedded?: boolean
+type PrepareModels = (onProgress: (progress: number) => void) => Promise<unknown>
+type DownloadState =
+  | { status: 'downloading'; percent: number }
+  | { status: 'ready' }
+  | { status: 'error' }
+
+function useModelDownload(prepare: PrepareModels | undefined) {
+  const [state, setState] = useState<DownloadState>({ status: 'downloading', percent: 0 })
+  const [attempt, setAttempt] = useState(0)
+
+  useEffect(() => {
+    if (!prepare) return
+    let active = true
+    setState({ status: 'downloading', percent: 0 })
+    void prepare((progress) => {
+      const percent = Math.floor(progress * 100)
+      if (!active) return
+      setState((current) => {
+        if (current.status !== 'downloading' || current.percent === percent) return current
+        return { status: 'downloading', percent }
+      })
+    }).then(() => {
+      if (active) setState({ status: 'ready' })
+    }, () => {
+      if (active) setState({ status: 'error' })
+    })
+    return () => { active = false }
+  }, [prepare, attempt])
+
+  return { ...state, retry: () => setAttempt((previous) => previous + 1) }
 }
 
-/**
- * First-run language step. UI language lives in a small top-right selector;
- * the body only asks for conversation language and level. Meaning language is
- * derived from UI language when the session snapshot is created.
- */
-export function OnboardingPage({
-  uiLang,
-  conversationLang,
-  level,
-  onUiLangChange,
-  onConversationLangChange,
-  onLevelChange,
-  onConfirm,
-  onRequestPermissions,
-  embedded,
-}: OnboardingPageProps) {
-  const { t, language } = useI18n()
-  const [working, setWorking] = useState(false)
+function DownloadStatus({ label, download }: { label: string; download: ReturnType<typeof useModelDownload> }) {
+  const { t } = useI18n()
+  if (download.status === 'ready') return null
 
-  async function confirm() {
-    setWorking(true)
+  return (
+    <div className="space-y-2 text-sm text-muted-foreground">
+      <div className="flex items-center justify-between gap-2">
+        <span>{label}</span>
+        {download.status === 'error' ? (
+          <Button size="sm" variant="outline" onClick={download.retry}>{t('retry')}</Button>
+        ) : (
+          <span className="tabular-nums">{download.percent}%</span>
+        )}
+      </div>
+      {download.status === 'error' ? (
+        <p role="alert" className="text-destructive">{t('modelDownloadError')}</p>
+      ) : (
+        <Progress value={download.percent} aria-label={label} />
+      )}
+    </div>
+  )
+}
+
+export type OnboardingPageProps = {
+  prefs: LanguagePrefs
+  enrolled: boolean
+  onPrefsChange: (prefs: LanguagePrefs) => void
+  onComplete: () => void
+  embedded?: boolean
+  requestMicrophone?: () => Promise<boolean>
+}
+
+export function OnboardingPage({ prefs, enrolled, onPrefsChange, onComplete, embedded, requestMicrophone }: OnboardingPageProps) {
+  const { t, language } = useI18n()
+  const [modelId, setModelId] = useState(() => selectTranscriptionModel(prefs.conversationLang).id)
+  const [confirmedModel, setConfirmedModel] = useState<TranscriptionModel>()
+  const [selectionError, setSelectionError] = useState(false)
+  const model = transcriptionModels.find((item) => item.id === modelId && item.languages.includes(prefs.conversationLang))
+    ?? selectTranscriptionModel(prefs.conversationLang)
+  const base = useModelDownload(prepareBaseSpeechModels)
+  const prepareTranscription = useMemo<PrepareModels | undefined>(() => {
+    if (confirmedModel) return (onProgress) => downloadTranscriptionModel(confirmedModel, onProgress)
+  }, [confirmedModel])
+  const transcription = useModelDownload(prepareTranscription)
+  const baseStatus = <DownloadStatus label={t('baseSpeechModels')} download={base} />
+
+  if (confirmedModel) {
+    return (
+      <EnrollmentPage
+        embedded={embedded}
+        conversationLang={prefs.conversationLang}
+        enrolled={enrolled}
+        onEnterSession={onComplete}
+        requestMicrophone={requestMicrophone}
+        enterDisabled={base.status !== 'ready' || transcription.status !== 'ready'}
+      >
+        {baseStatus}
+        <DownloadStatus label={confirmedModel.name} download={transcription} />
+      </EnrollmentPage>
+    )
+  }
+
+  function confirmModel() {
     try {
-      await onRequestPermissions?.()
-      onConfirm()
-    } finally {
-      setWorking(false)
+      saveTranscriptionModel(model.id)
+    } catch {
+      setSelectionError(true)
+      return
     }
+    setConfirmedModel(model)
   }
 
   return (
-    <WizardScreen embedded={embedded}>
-      <CardHeader className="relative pr-36">
-        <div className="absolute right-6 top-5">
-          <Select value={uiLang} onValueChange={(value) => onUiLangChange(value as UiLanguage)}>
-            <SelectTrigger className="h-9 w-28" aria-label={t('uiLanguage')}>
-              <Languages className="size-3.5" />
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="zh">中文</SelectItem>
-              <SelectItem value="ja">日本語</SelectItem>
-              <SelectItem value="en">English</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <CardTitle className="text-xl">{t('selectLanguage')}</CardTitle>
-        <CardDescription className="leading-relaxed">{t('onboardingDescription')}</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        <div className="space-y-2">
-          <p className="text-xs font-bold text-muted-foreground">{t('conversationLanguage')}</p>
-          <ToggleGroup
-            variant="chip"
-            type="single"
-            value={conversationLang}
-            onValueChange={(value) => value && onConversationLangChange(value as AppLanguage)}
-            className="w-full"
-          >
-            {LANGUAGES.map((option) => (
-              <ToggleGroupItem key={option} value={option} variant="chip">
-                {languageLabel(option, language)}
-              </ToggleGroupItem>
-            ))}
-          </ToggleGroup>
-        </div>
+    <WizardScreen embedded={embedded} className="space-y-6 p-5 sm:p-6">
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-xl font-semibold">{t('setupConversation')}</h1>
+        <Select value={prefs.uiLang} onValueChange={(value) => onPrefsChange({ ...prefs, uiLang: value as UiLanguage })}>
+          <SelectTrigger className="h-9 w-auto gap-2" aria-label={t('uiLanguage')}>
+            <TranslateIcon className="size-4" />
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="zh">中文</SelectItem>
+            <SelectItem value="ja">日本語</SelectItem>
+            <SelectItem value="en">English</SelectItem>
+          </SelectContent>
+        </Select>
+      </header>
 
-        <div className="space-y-2">
-          <p className="text-xs font-bold text-muted-foreground">
-            {t('level')} · {languageLabel(conversationLang, language)}
-          </p>
-          <ToggleGroup
-            type="single"
-            value={level}
-            onValueChange={(value) => value && onLevelChange(value as LearnerLevel)}
-          >
-            {LEVELS.map((option) => (
-              <ToggleGroupItem key={option} value={option} className="flex-1">
-                {levelLabel(option, language)}
-              </ToggleGroupItem>
-            ))}
-          </ToggleGroup>
-        </div>
+      <div className="space-y-2">
+        <Label id="setup-conversation-language">{t('conversationLanguage')}</Label>
+        <ToggleGroup
+          type="single"
+          variant="chip"
+          aria-labelledby="setup-conversation-language"
+          value={prefs.conversationLang}
+          onValueChange={(value) => {
+            if (value) onPrefsChange({ ...prefs, conversationLang: value as AppLanguage })
+          }}
+        >
+          {languages.map((option) => (
+            <ToggleGroupItem key={option} value={option}>
+              {languageLabel(option, language)}
+            </ToggleGroupItem>
+          ))}
+        </ToggleGroup>
+      </div>
 
-        <Button className="w-full" size="lg" onClick={() => void confirm()} disabled={working}>
-          {working ? <Loader2 className="size-4 animate-spin" /> : <ArrowRight className="size-4" />}
-          {t('continueVoiceprint')}
-        </Button>
-      </CardContent>
+      <TranscriptionModelPicker language={prefs.conversationLang} value={model.id} onChange={setModelId} />
+      {baseStatus}
+      {selectionError ? <p role="alert" className="text-sm text-destructive">{t('modelSettingsError')}</p> : null}
+      <Button className="w-full" size="lg" onClick={confirmModel}>
+        {t('downloadAndContinue')}
+        <ArrowRightIcon />
+      </Button>
     </WizardScreen>
   )
 }

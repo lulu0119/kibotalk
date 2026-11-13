@@ -12,7 +12,6 @@
     "@kibotalk/conversation": "workspace:*",
     "@kibotalk/pages": "workspace:*",
     "@kibotalk/ui": "workspace:*",
-    "lucide-react": "^1.26.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

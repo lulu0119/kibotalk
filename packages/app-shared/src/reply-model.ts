@@ -1,0 +1,98 @@
+import type { LlmClient } from '@kibotalk/pipeline'
+import type { AppLanguage, LearnerLevel } from '@kibotalk/conversation'
+import {
+  emptyLlmSettings,
+  readLlmSettings,
+  streamReplyText,
+  type ReplyModelHost,
+  type ReplyTextStream,
+} from '@kibotalk/llm'
+import { buildReplySuggestionsMessages } from '@kibotalk/prompts'
+import { extractCandidates } from './partial-json'
+
+export type SessionLanguageSnapshot = {
+  conversationLang: AppLanguage
+  meaningLang: AppLanguage
+  level: LearnerLevel
+}
+
+export function createBrowserReplyModel(settingsKey: string): ReplyModelHost {
+  const settings: ReplyModelHost['settings'] = {
+    async load() {
+      try {
+        return readLlmSettings(JSON.parse(localStorage.getItem(settingsKey) ?? 'null'))
+      } catch {
+        return emptyLlmSettings
+      }
+    },
+    async save(value) {
+      localStorage.setItem(settingsKey, JSON.stringify(readLlmSettings(value)))
+    },
+  }
+
+  return {
+    settings,
+    async *stream(input, signal) {
+      const config = await settings.load()
+      let connectionFailed = false
+      const browserFetch: typeof fetch = async (...args) => {
+        try {
+          return await fetch(...args)
+        } catch (cause) {
+          connectionFailed = cause instanceof TypeError && !signal.aborted
+          throw cause
+        }
+      }
+      try {
+        yield* streamReplyText(config, input, signal, browserFetch)
+      } catch (cause) {
+        if (connectionFailed && !signal.aborted) throw new Error('LLM_BROWSER_CONNECTION', { cause })
+        throw cause
+      }
+    },
+  }
+}
+
+export const browserReplyModel = createBrowserReplyModel('kibotalk.replyModel')
+
+export function createReplyClient(
+  snapshot: SessionLanguageSnapshot,
+  isEnabled: () => boolean,
+  stream: ReplyTextStream,
+  onError: (message: string) => void,
+): LlmClient {
+  return {
+    async *streamCandidates(context, signal) {
+      if (!isEnabled()) {
+        yield { type: 'done' }
+        return
+      }
+
+      let raw = ''
+      let emitted = 0
+      try {
+        const input = await buildReplySuggestionsMessages({ context, ...snapshot })
+        for await (const text of stream(input, signal)) {
+          if (!isEnabled()) break
+          if (!raw && text) yield { type: 'first-token' }
+          raw += text
+          const complete = extractCandidates(raw)
+          for (; emitted < complete.length; emitted++) {
+            const candidate = complete[emitted]
+            yield { type: 'candidate-start', index: emitted }
+            yield { type: 'candidate-delta', index: emitted, field: 'meaning', delta: candidate.meaning }
+            yield { type: 'candidate-delta', index: emitted, field: 'targetText', delta: candidate.targetText }
+            if (candidate.reading) {
+              yield { type: 'candidate-delta', index: emitted, field: 'reading', delta: candidate.reading }
+            }
+            yield { type: 'candidate-done', index: emitted, candidate }
+          }
+        }
+      } catch (cause) {
+        if (!signal.aborted) onError(cause instanceof Error ? cause.message : String(cause))
+        throw cause
+      }
+      yield { type: 'done' }
+    },
+  }
+}

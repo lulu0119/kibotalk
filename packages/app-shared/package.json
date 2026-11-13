@@ -7,6 +7,7 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
+    "./local-models": "./src/audio/local-models.ts",
     "./speaker-embedding-storage": "./src/speaker-embedding-storage.ts"
   },
   "scripts": {
@@ -20,12 +21,20 @@
     "vitest": "^2.1.0"
   },
   "dependencies": {
-    "@huggingface/transformers": "^3.8.1",
     "@kibotalk/audio": "workspace:*",
     "@kibotalk/conversation": "workspace:*",
-    "@kibotalk/observability": "workspace:*",
+    "@kibotalk/llm": "workspace:*",
     "@kibotalk/pipeline": "workspace:*",
+    "@kibotalk/prompts": "workspace:*",
     "@kibotalk/speaker": "workspace:*",
-    "react": "^19.2.8"
+    "@sherpaw/asr": "0.3.0",
+    "@sherpaw/preloader": "0.3.0",
+    "@sherpaw/speaker-identification": "0.3.0",
+    "@sherpaw/vad": "0.3.0",
+    "idb-keyval": "^6.2.2",
+    "onnxruntime-web": "1.27.0",
+    "react": "^19.2.8",
+    "comlink": "^4.4.2",
+    "@proj-airi/trace-kit": "0.15.2"
   }
 }

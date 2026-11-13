@@ -4,8 +4,6 @@ import type {
   SessionAudioSource,
   UiLanguage,
 } from '@kibotalk/conversation'
-import { defaultVadConfig } from '@kibotalk/audio/vad'
-import { SILERO_VARIANTS } from './audio/silero-vad'
 
 /**
  * Product-app defaults — the knobs the playground exposes as sliders/selects
@@ -16,11 +14,9 @@ import { SILERO_VARIANTS } from './audio/silero-vad'
 export type AppConfig = {
   vad: {
     speechThreshold: number
-    exitThreshold: number
     minSilenceDurationMs: number
     minSpeechDurationMs: number
   }
-  vadVariantId: string
   /** Segment-aggregator flush triggers (same-speaker accumulation → one turn). */
   aggregator: { pauseMs: number; maxMs: number }
   speakerThreshold: number
@@ -28,14 +24,12 @@ export type AppConfig = {
 
 export const defaultAppConfig: AppConfig = {
   vad: {
-    speechThreshold: defaultVadConfig.speechThreshold,
-    exitThreshold: defaultVadConfig.exitThreshold,
-    minSilenceDurationMs: defaultVadConfig.minSilenceDurationMs,
-    minSpeechDurationMs: defaultVadConfig.minSpeechDurationMs,
+    speechThreshold: 0.2,
+    minSilenceDurationMs: 400,
+    minSpeechDurationMs: 200,
   },
-  vadVariantId: SILERO_VARIANTS[0].id,
   aggregator: { pauseMs: 500, maxMs: 30000 },
-  speakerThreshold: 0.49,
+  speakerThreshold: 0.6,
 }
 
 export const defaultLanguagePrefs: {

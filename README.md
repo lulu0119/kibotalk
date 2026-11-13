@@ -41,31 +41,39 @@ We believe people should keep ownership of their voice. AI can suggest; **you** 
 
 ## Run locally
 
-Use Node.js 22 and pnpm. Copy `.env.example` to `.env` at the repository root,
-then fill in your iFlytek or DashScope credentials and your OpenAI-compatible
-LLM configuration. An LLM on the same machine is supported.
+Use Node.js 26 and pnpm.
 
-```sh
+```bash
 pnpm install --frozen-lockfile
-pnpm dev:api
+pnpm dev:web          # Web
+pnpm dev:desktop      # macOS
+pnpm dev:playground   # Audio diagnostics and IO trace
 ```
 
-### Web
+Open **Settings → Models** to configure a reply model. Choose a provider or enter an
+OpenAI-compatible Base URL and model ID, such as an Ollama or LM Studio endpoint.
+An API key is optional for endpoints that allow unauthenticated requests. The Web app
+calls the endpoint from the browser and requires the provider to allow its origin.
+The macOS app sends requests from its main process and encrypts the API key with
+Electron's system-backed storage.
 
-Run `pnpm dev:web` in another terminal and open the address Vite prints. To
-serve the built Web app, run `pnpm --filter @kibotalk/web build` and open the
-local proxy at `http://127.0.0.1:8787`.
+Transcription, voice activity detection, and speaker verification run on the device.
+Web starts caching Silero VAD and CAM++ when it opens. The macOS installer includes
+both models. During setup, choose one transcription model and download it while
+recording your voiceprint. Zipformer covers Chinese, English, and Japanese by default.
+Settings lists the supported languages, size, and download status of each model.
+Voiceprints from earlier builds require re-enrollment. Session history, transcripts,
+and saved suggestions stay in the same local database. Web history is tied to the
+browser profile and site origin.
 
-### macOS
+A remote reply model receives the finalized transcript context. Choose a local endpoint
+for local reply generation too.
 
-With the proxy running, use `pnpm dev:desktop`. To build an Apple Silicon
-installer with bundled VAD and speaker models, use
-`pnpm --filter @kibotalk/desktop package:mac`. Installers built before the
-hosted service was retired still point to the old server.
-
-History, preferences, and voiceprints stay on the device. Live transcription
-sends speech to the configured STT provider. Reply generation sends recent
-transcript context to the configured LLM.
+Build Web with `pnpm --filter @kibotalk/web build` and serve `apps/web/dist` on a
+static host with HTTPS or on localhost. Build the Apple Silicon installer with
+`pnpm --filter @kibotalk/desktop package:mac`, which stages the two bundled models
+before packaging. To use the same local assets in development, run
+`pnpm --filter @kibotalk/desktop download-models`.
 
 ## Status
 

@@ -1,15 +1,18 @@
-import { useRef, useState } from 'react'
+import { buildReplySuggestionsMessages } from '@kibotalk/prompts'
+import { useEffect, useRef, useState } from 'react'
 import type { ConversationTurn, ReplyCandidate } from '@kibotalk/conversation'
 import {
   Button,
+  Label,
   ScrollArea,
   StickyNoteCard,
   StickyNoteCardPlaceholder,
   Textarea,
   toast,
 } from '@kibotalk/ui'
-import { Cable, Loader2, Sparkles, StopCircle } from 'lucide-react'
-import { extractCandidates, parseSseStream } from '@kibotalk/app-shared'
+import { LoaderIcon, PlugCircleIcon, SparklesIcon, StopCircleIcon } from '@kibotalk/ui/icons'
+import { extractCandidates } from '@kibotalk/app-shared'
+import { playgroundReplyModel } from './local-settings'
 import { readLanguageSnapshot } from './config-store'
 import { StageShell } from './components/StageShell'
 
@@ -78,11 +81,15 @@ export default function DirectApi() {
   })
   const [tokenBatches, setTokenBatches] = useState<Array<{ atMs: number; chars: number }>>([])
   const abortRef = useRef<AbortController | null>(null)
+  useEffect(() => () => abortRef.current?.abort(), [])
   const batchRef = useRef({ chars: 0, lastFlush: 0 })
 
   function failLlm(message: string) {
-    setLlmError(message)
-    toast.error(message)
+    const detail = message === 'LLM_BROWSER_CONNECTION'
+      ? '浏览器无法连接回复服务。如果服务限制跨域请求，请用 macOS 版。'
+      : message
+    setLlmError(detail)
+    toast.error(detail)
   }
 
   function parseContext(text: string): ConversationTurn[] {
@@ -121,39 +128,16 @@ export default function DirectApi() {
     let rawAccum = ''
     try {
       const snap = readLanguageSnapshot()
-      const res = await fetch('/api/llm', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          context: parseContext(contextText),
-          level: snap.level,
-          conversationLang: snap.conversationLang,
-          meaningLang: snap.meaningLang,
-        }),
-        signal: controller.signal,
-      })
-      if (!res.ok || !res.body) {
-        const txt = await res.text().catch(() => '')
-        throw new Error(`HTTP ${res.status} ${txt}`)
-      }
-      for await (const msg of parseSseStream(res)) {
-        if (msg.event === 'error') {
-          failLlm(msg.data)
-          continue
-        }
-        if (msg.event === 'prompt') {
-          setPrompt(msg.data)
-          continue
-        }
-        if (msg.event !== 'token') continue
-
+      const input = await buildReplySuggestionsMessages({ context: parseContext(contextText), ...snap })
+      setPrompt(input.map(({ role, content }) => `${role.toUpperCase()}:\n${content}`).join('\n\n'))
+      for await (const token of playgroundReplyModel.stream(input, controller.signal)) {
         const now = performance.now()
         if (firstTokenAt == null) {
           firstTokenAt = now
           setMetrics((m) => ({ ...m, status: 'generating', ttftMs: now - t0 }))
         }
 
-        rawAccum += msg.data
+        rawAccum += token
         const next = rawAccum
         setRaw(next)
         setCandidates((cur) => {
@@ -169,7 +153,7 @@ export default function DirectApi() {
           charsPerSec: elapsedGen > 0 ? (next.length / elapsedGen) * 1000 : null,
         }))
 
-        batchRef.current.chars += msg.data.length
+        batchRef.current.chars += token.length
         if (now - batchRef.current.lastFlush >= 100 && batchRef.current.chars > 0) {
           const chars = batchRef.current.chars
           batchRef.current = { chars: 0, lastFlush: now }
@@ -203,7 +187,7 @@ export default function DirectApi() {
           genMs: firstTokenAt != null ? tEnd - firstTokenAt : m.genMs,
         }))
       } else {
-        failLlm((e as Error).message)
+        failLlm(e instanceof Error ? e.message : String(e))
         setMetrics((m) => ({ ...m, status: 'idle' }))
       }
     } finally {
@@ -225,26 +209,29 @@ export default function DirectApi() {
 
   return (
     <StageShell
+      debugTitle="延迟与流式输出"
       stage={
         <div className="flex h-full min-h-0 flex-col gap-4 p-5">
           <div className="space-y-1">
             <h2 className="inline-flex items-center gap-2 text-lg font-semibold">
-              <Cable className="size-4" />
+              <PlugCircleIcon className="size-4" />
               回复预览
             </h2>
             <p className="text-xs text-muted-foreground">
-              用户侧看到的回复预览 · 旁栏调试代理调用
+              用一段对话测试已配置模型的响应时间。
             </p>
           </div>
+          <Label htmlFor="reply-speed-context">对话内容</Label>
           <Textarea
+            id="reply-speed-context"
             value={contextText}
             onChange={(e) => setContextText(e.target.value)}
             rows={4}
-            className="min-h-[6rem]"
+            className="min-h-24"
           />
           <div className="flex gap-2">
             <Button onClick={() => void generate()} disabled={busy}>
-              {busy ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
+              {busy ? <LoaderIcon className="size-4 animate-spin" /> : <SparklesIcon className="size-4" />}
               生成
             </Button>
             <Button
@@ -252,7 +239,7 @@ export default function DirectApi() {
               onClick={() => abortRef.current?.abort()}
               disabled={!busy}
             >
-              <StopCircle className="size-4" />
+              <StopCircleIcon className="size-4" />
               中止
             </Button>
           </div>

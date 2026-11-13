@@ -12,3 +12,4 @@ export type {
 } from './types'
 export { Pipeline } from './state-machine'
 export { defaultConfig } from './types'
+export { REPLY_READY_MS, replyTraceProfile } from './reply-trace'

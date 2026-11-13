@@ -2,7 +2,6 @@ import {
   accountConversationDatabaseName,
   IndexedDbConversationStorage,
 } from '@kibotalk/conversation'
-import { desktopApp } from './api-runtime'
 
 function previousWebHistoryUserId(): string | null {
   try {
@@ -16,8 +15,7 @@ function previousWebHistoryUserId(): string | null {
 }
 
 /** Reopen this device's last history database after removing account login. */
-export function createLocalConversationStorage(): IndexedDbConversationStorage {
-  const desktop = desktopApp()
-  const userId = desktop ? desktop.previousHistoryUserId : previousWebHistoryUserId()
+export function createLocalConversationStorage(previousDesktopId?: string | null): IndexedDbConversationStorage {
+  const userId = previousDesktopId === undefined ? previousWebHistoryUserId() : previousDesktopId
   return new IndexedDbConversationStorage(userId ? accountConversationDatabaseName(userId) : undefined)
 }

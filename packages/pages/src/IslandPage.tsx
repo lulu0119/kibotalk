@@ -22,21 +22,18 @@ import {
   IslandStatus,
   IslandToggleButton,
   StickyNoteStack,
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
 } from '@kibotalk/ui'
 import {
-  Ellipsis,
-  EyeOff,
-  History,
-  LogOut,
-  Pause,
-  Play,
-  Settings,
-  Sparkles,
-  Square,
-} from 'lucide-react'
+  EyeOffDuotoneIcon,
+  HistoryDuotoneIcon,
+  LogoutDuotoneIcon,
+  MenuDotsDuotoneIcon,
+  PauseDuotoneIcon,
+  PlayDuotoneIcon,
+  SettingsDuotoneIcon,
+  SparklesDuotoneIcon,
+  StopDuotoneIcon,
+} from '@kibotalk/ui/icons'
 import { IslandShell } from './IslandShell'
 
 export type IslandPageProps = {
@@ -47,6 +44,8 @@ export type IslandPageProps = {
   onHide?: () => void
   onQuit?: () => void
 }
+
+const islandMenuItemClass = 'min-h-8 gap-2 px-2 py-1 focus:bg-white/10 focus:text-stone-100 [&_svg]:size-4.5'
 
 function useVisibleRoundCount() {
   const rootRef = useRef<HTMLDivElement>(null)
@@ -68,16 +67,34 @@ function useVisibleRoundCount() {
 
 function islandStatus(controller: ProductSessionController, translate: ReturnType<typeof useI18n>['t']) {
   const { lifecycle, state, vadStatus, loading } = controller.session
-  if (loading) return { label: translate('preparing'), pulse: true, toneClassName: 'bg-white/60' }
-  if (lifecycle === 'paused') return { label: translate('paused'), pulse: false, toneClassName: 'bg-yellow-400' }
-  if (lifecycle === 'stopped') return { label: translate('stopped'), pulse: false, toneClassName: 'bg-white/35' }
+  if (loading) return { label: loading, pulse: true, toneClassName: 'bg-white/60' }
+  if (lifecycle === 'paused') return { label: translate('paused') }
+  if (lifecycle === 'stopped') return { label: translate('stopped') }
   if (state === 'LLM_STREAMING') {
     return { label: translate('generatingSuggestions'), pulse: true, toneClassName: 'bg-white/70' }
   }
-  if (vadStatus === 'speech') {
-    return { label: translate('listening'), pulse: true, toneClassName: 'bg-emerald-400' }
+  return { label: translate('listening'), pulse: vadStatus === 'speech', toneClassName: 'bg-primary-soft-strong' }
+}
+
+function sessionToggle(controller: ProductSessionController, translate: ReturnType<typeof useI18n>['t']) {
+  const { session } = controller
+  const { lifecycle } = session
+  switch (lifecycle) {
+    case 'running':
+      return { label: translate('pause'), onClick: () => void session.pause() }
+    case 'paused':
+      return { label: translate('resume'), onClick: () => void session.resume() }
+    case 'restoring':
+    case 'starting':
+    case 'stopped':
+      return {
+        label: translate('start'),
+        onClick: controller.requestSessionStart,
+        disabled: lifecycle !== 'stopped',
+      }
+    default:
+      throw new Error(`Unsupported session lifecycle: ${lifecycle satisfies never}`)
   }
-  return { label: translate('listening'), pulse: false, toneClassName: 'bg-emerald-400' }
 }
 
 /** Production desktop floating window, including live resize-aware round count and vertical flip. */
@@ -95,17 +112,19 @@ export function IslandPage({
   const [quitDialogOpen, setQuitDialogOpen] = useState(false)
   const { session, rounds, replyEnabled, setReplyEnabled } = controller
   const tone = islandStatus(controller, t)
-  const active = session.lifecycle === 'running' || session.lifecycle === 'paused'
+  const running = session.lifecycle === 'running'
+  const active = running || session.lifecycle === 'paused'
   const latestTurn = session.turns.at(-1)
   const transcript = session.draft ?? latestTurn
   const showSuggestions = rounds.length > 0 || session.state === 'LLM_STREAMING'
 
-  const localSttUnavailable = session.error === 'LOCAL_STT_UNAVAILABLE'
-  const content = localSttUnavailable || transcript || showSuggestions ? (
+  const sessionError = session.error === 'LLM_SETTINGS_REQUIRED' ? t('replyModelRequired')
+    : session.error === 'VOICEPRINT_REQUIRED' ? t('voiceprintRequired') : session.error
+  const content = sessionError || transcript || showSuggestions ? (
     <div className="desktop-float-content desktop-interactive flex min-h-0 w-full flex-1 flex-col gap-2.5">
-      {localSttUnavailable ? (
+      {sessionError ? (
         <div role="alert" className="glass-chip shrink-0 px-3.5 py-2 text-xs">
-          {t('localSttUnavailable')}
+          {sessionError}
         </div>
       ) : null}
       {transcript ? (
@@ -133,61 +152,36 @@ export function IslandPage({
 
   const island = (
     <IslandBar className="desktop-interactive mx-auto shrink-0">
-      <IslandStatus
-        label={tone.label}
-        pulse={tone.pulse}
-        toneClassName={tone.toneClassName}
-      />
+      <IslandStatus {...tone} />
       <IslandSeparator />
-      {session.lifecycle === 'running' ? (
-        <IslandToggleButton on label={t('pause')} onClick={() => void session.pause()}>
-          <Pause className="size-4" />
-        </IslandToggleButton>
-      ) : session.lifecycle === 'paused' ? (
-        <IslandToggleButton on={false} label={t('resume')} onClick={() => void session.resume()}>
-          <Play className="size-4" />
-        </IslandToggleButton>
-      ) : (
-        <IslandToggleButton
-          on={false}
-          disabled={session.lifecycle === 'starting' || session.lifecycle === 'restoring'}
-          label={t('start')}
-          onClick={controller.requestSessionStart}
-        >
-          <Play className="size-4" />
-        </IslandToggleButton>
-      )}
+      <IslandToggleButton {...sessionToggle(controller, t)} on={running}>
+        {running ? <PauseDuotoneIcon /> : <PlayDuotoneIcon />}
+      </IslandToggleButton>
       <IslandNavButton
         label={t('stopAndSave')}
         disabled={!active}
         onClick={() => setStopDialogOpen(true)}
       >
-        <Square className="size-4" />
+        <StopDuotoneIcon />
       </IslandNavButton>
       <IslandToggleButton
         on={replyEnabled}
         label={t('aiSuggestions')}
         onClick={() => setReplyEnabled((enabled) => !enabled)}
       >
-        <Sparkles className="size-4" />
+        <SparklesDuotoneIcon />
       </IslandToggleButton>
       <IslandSeparator />
       <IslandDragHandle label={t('moveWindow')} />
       <DropdownMenu>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <DropdownMenuTrigger
-              aria-label={t('more')}
-              className="flex size-8 items-center justify-center rounded-sm bg-white/8 text-island-foreground transition-colors [-webkit-app-region:no-drag] hover:bg-white/12 disabled:opacity-40"
-            >
-              <Ellipsis className="size-4" />
-            </DropdownMenuTrigger>
-          </TooltipTrigger>
-          <TooltipContent side="top">{t('more')}</TooltipContent>
-        </Tooltip>
+        <IslandNavButton asChild label={t('more')}>
+          <DropdownMenuTrigger>
+            <MenuDotsDuotoneIcon />
+          </DropdownMenuTrigger>
+        </IslandNavButton>
         <DropdownMenuContent
+          className="island-menu min-w-0 rounded-xl border-white/10 bg-island p-2 text-stone-200"
           align="end"
-          // Match content flip: content above → menu opens up; content below → down.
           side={contentSide === 'above' ? 'top' : 'bottom'}
           sideOffset={8}
           collisionPadding={12}
@@ -195,31 +189,28 @@ export function IslandPage({
           onCloseAutoFocus={(event) => event.preventDefault()}
         >
           {onGoHistory ? (
-            <DropdownMenuItem onSelect={onGoHistory}>
-              <History className="size-4" />
+            <DropdownMenuItem className={islandMenuItemClass} onSelect={onGoHistory}>
+              <HistoryDuotoneIcon />
               {t('history')}
             </DropdownMenuItem>
           ) : null}
           {onGoSettings ? (
-            <DropdownMenuItem onSelect={onGoSettings}>
-              <Settings className="size-4" />
+            <DropdownMenuItem className={islandMenuItemClass} onSelect={onGoSettings}>
+              <SettingsDuotoneIcon />
               {t('settings')}
             </DropdownMenuItem>
           ) : null}
           {onHide ? (
-            <DropdownMenuItem onSelect={onHide}>
-              <EyeOff className="size-4" />
+            <DropdownMenuItem className={islandMenuItemClass} onSelect={onHide}>
+              <EyeOffDuotoneIcon />
               {t('hideWindow')}
             </DropdownMenuItem>
           ) : null}
           {onQuit ? (
             <>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                className="text-destructive focus:text-destructive"
-                onSelect={() => setQuitDialogOpen(true)}
-              >
-                <LogOut className="size-4" />
+              <DropdownMenuSeparator className="bg-white/10" />
+              <DropdownMenuItem className={islandMenuItemClass} onSelect={() => setQuitDialogOpen(true)}>
+                <LogoutDuotoneIcon />
                 {t('quit')}
               </DropdownMenuItem>
             </>

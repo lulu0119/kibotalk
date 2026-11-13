@@ -1,13 +1,4 @@
-/**
- * Captures microphone PCM via `getUserMedia` and an AudioWorklet, resampled to
- * the AudioContext's sample rate (requested 16kHz). Emits fixed-size Float32Array
- * chunks to a callback — feed them to `createVAD.processAudio`.
- *
- * The AudioWorklet processor is inlined as a Blob URL so no separate worklet
- * file / Vite worklet bundling is needed. The browser resamples the mic stream
- * to the AudioContext rate, so chunks arrive at ~16kHz mono.
- */
-
+/** Captures 16 kHz mono PCM in 512-sample frames without playing it back. */
 const WORKLET_SOURCE = `
 class VadProcessor extends AudioWorkletProcessor {
   constructor() {
@@ -52,7 +43,7 @@ export class AudioSource {
 
   constructor(private options: AudioSourceOptions = {}) {}
 
-  async start(onChunk: (pcm: Float32Array) => void): Promise<void> {
+  async start(onChunk: (pcm: Float32Array) => void, signal?: AbortSignal): Promise<void> {
     this.stopping = false
     this.stream =
       this.options.stream ??
@@ -67,6 +58,10 @@ export class AudioSource {
             : {}),
         },
       }))
+    if (signal?.aborted) {
+      this.stop()
+      signal.throwIfAborted()
+    }
     for (const track of this.stream.getAudioTracks()) {
       track.addEventListener(
         'ended',
@@ -79,15 +74,26 @@ export class AudioSource {
 
     this.audioContext = new AudioContext({ sampleRate: 16000 })
     const blob = new Blob([WORKLET_SOURCE], { type: 'application/javascript' })
-    await this.audioContext.audioWorklet.addModule(URL.createObjectURL(blob))
+    const url = URL.createObjectURL(blob)
+    try {
+      await this.audioContext.audioWorklet.addModule(url)
+      signal?.throwIfAborted()
+    } finally {
+      URL.revokeObjectURL(url)
+    }
 
     this.sourceNode = this.audioContext.createMediaStreamSource(this.stream)
-    this.workletNode = new AudioWorkletNode(this.audioContext, 'vad-processor')
+    this.workletNode = new AudioWorkletNode(this.audioContext, 'vad-processor', {
+      channelCount: 1,
+      channelCountMode: 'explicit',
+    })
     this.workletNode.port.onmessage = (e: MessageEvent<{ buffer: Float32Array }>) => {
       onChunk(e.data.buffer)
     }
     this.sourceNode.connect(this.workletNode)
-    // Worklet has no output destination; connecting to destination is not required.
+    // Connecting the silent output keeps the worklet in the active audio graph.
+    this.workletNode.connect(this.audioContext.destination)
+    await this.audioContext.resume()
   }
 
   get sampleRate(): number {

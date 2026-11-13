@@ -1,78 +1,55 @@
-import { useEffect, useRef, useState } from 'react'
-import type { PipelineEvent } from '@kibotalk/pipeline'
-import { Pipeline } from '@kibotalk/pipeline'
-import type { ConversationTurn, ReplyCandidate } from '@kibotalk/conversation'
-import { InMemoryConversationStorage } from '@kibotalk/conversation'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import type { SessionAudioSource } from '@kibotalk/conversation'
+import { useConversationSession } from '@kibotalk/app-shared'
 import {
-  EmbeddingSpeakerVerifier,
-  stabilizeSpeaker,
-} from '@kibotalk/speaker'
-import type { Embedding } from '@kibotalk/speaker'
-import { createVAD } from '@kibotalk/audio/vad'
-import type { VAD } from '@kibotalk/audio/vad'
-import { createSegmentAggregator } from '@kibotalk/audio/aggregator'
-import type { SegmentAggregator } from '@kibotalk/audio/aggregator'
-import { Button, Separator, StickyNoteStack, toast, type CandidateRound } from '@kibotalk/ui'
+  Badge, Button, Card, ResizableHandle, ResizablePanel, ResizablePanelGroup, Select, SelectContent,
+  SelectItem, SelectTrigger, SelectValue, Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle,
+  SheetTrigger, StickyNoteStack, cn,
+} from '@kibotalk/ui'
 import {
-  AudioSource,
-  attachAudioIoSpans,
-  createSileroInfer,
-  SILERO_VARIANTS,
-  createWorkerEmbedAudio,
-  createCurrentSpeakerEmbeddingStorage,
-  ProxyLlmClient,
-  connectRealtimeSttWithRetry,
-  finalizedTurnFromRealtimeSegments,
-  isTranscriptionFailed,
-  type RealtimeSttClient,
-  type TranscribedAudioSegment,
-} from '@kibotalk/app-shared'
-import { readLanguageSnapshot, useConfig } from './config-store'
-import { SessionToolbar } from './components/SessionToolbar'
+  EraserIcon,
+  LoaderIcon,
+  MicrophoneIcon,
+  PlayIcon,
+  PulseIcon,
+  StopIcon,
+  Tuning2Icon,
+} from '@kibotalk/ui/icons'
+import { useConfig } from './config-store'
 import { TranscriptPanel } from './components/TranscriptPanel'
 import { DebugPanel } from './components/DebugPanel'
 import { IslandBar } from './components/IslandBar'
-import { StageShell } from './components/StageShell'
-import {
-  IOAttributes,
-  IOSpanNames,
-  IOSubsystems,
-  initIOTracer,
-  startSpan,
-} from '@kibotalk/observability'
-import { useIoTracerStore } from './io-tracer/store'
+import { ProductSurfaceToggle } from './components/ProductSurfaceToggle'
+import { TraceDialog } from './components/TraceDialog'
+import { LiveSpeakerTracks } from './components/LiveSpeakerTracks'
+import { trackLiveSpeakers, type LiveSpeakerLane } from './live-speaker-tracks'
+import { startTrace, traceSource } from './io-tracer/trace'
+import { playgroundReplyModel, playgroundVoiceprint } from './local-settings'
 
-type TurnView = ConversationTurn & { candidates?: ReplyCandidate[] }
+const wideLayout = '(min-width: 64rem)'
+function subscribeLayout(onChange: () => void) {
+  const media = window.matchMedia(wideLayout)
+  media.addEventListener('change', onChange)
+  return () => media.removeEventListener('change', onChange)
+}
+const isWide = () => window.matchMedia(wideLayout).matches
 
-type DraftTurn = {
-  speaker: 'user' | 'other'
-  text: string
-  startedAt: number
-  endedAt: number
+const sourceLabels: Record<SessionAudioSource, string> = {
+  microphone: '麦克风',
+  system: '共享音频',
+  both: '麦克风 + 共享音频',
 }
 
 export default function LiveSession({
   hasEmbedding,
-  onGoEnroll,
+  replyReady,
+  onConfigureReply,
 }: {
   hasEmbedding: boolean
-  onGoEnroll: () => void
+  replyReady: boolean
+  onConfigureReply: () => void
 }) {
-  const [running, setRunning] = useState(false)
-  const [loading, setLoading] = useState('')
-  const [error, setError] = useState('')
-  const [statusNote, setStatusNote] = useState('')
-  const [state, setState] = useState('IDLE')
-  const [turns, setTurns] = useState<TurnView[]>([])
-  const [draft, setDraft] = useState<DraftTurn | null>(null)
-  const [candidateRounds, setCandidateRounds] = useState<CandidateRound[]>([])
-  const [vadStatus, setVadStatus] = useState<'idle' | 'speech' | 'silence'>('idle')
-  const [mode, setMode] = useState<'auto' | 'checking'>('checking')
-  const [confidence, setConfidence] = useState<number | null>(null)
-  const [activeSttPath, setActiveSttPath] = useState<'idle' | 'realtime'>('idle')
-
   const speechThreshold = useConfig((s) => s.speechThreshold)
-  const exitThreshold = useConfig((s) => s.exitThreshold)
   const minSilenceDurationMs = useConfig((s) => s.minSilenceDurationMs)
   const minSpeechDurationMs = useConfig((s) => s.minSpeechDurationMs)
   const pauseMs = useConfig((s) => s.pauseMs)
@@ -81,464 +58,224 @@ export default function LiveSession({
   const candidateRoundsMax = useConfig((s) => s.candidateRoundsMax)
   const islandSttEnabled = useConfig((s) => s.islandSttEnabled)
   const islandReplyEnabled = useConfig((s) => s.islandReplyEnabled)
-  const productSurfaceMode = useConfig((s) => s.productSurfaceMode)
+  const floating = useConfig((s) => s.productSurfaceMode === 'floating')
   const patch = useConfig((s) => s.patch)
-  const setLiveSessionRunning = useConfig((s) => s.setLiveSessionRunning)
+  const [audioSource, setAudioSource] = useState<SessionAudioSource>('microphone')
+  const [transcriptSource, setTranscriptSource] = useState<SessionAudioSource>('microphone')
+  const [verifiedSpeakers, setVerifiedSpeakers] = useState(false)
+  const [sharing, setSharing] = useState(false)
+  const [shareError, setShareError] = useState('')
+  const [stopping, setStopping] = useState(false)
+  const [speakerLanes, setSpeakerLanes] = useState<LiveSpeakerLane[]>([])
+  const speakerTracker = useRef<ReturnType<typeof trackLiveSpeakers>>(null)
+  const sharedStream = useRef<MediaStream | null>(null)
+  const disposed = useRef(false)
+  const wide = useSyncExternalStore(subscribeLayout, isWide, () => false)
+  const conversationLang = useConfig((s) => s.conversationLang)
+  const meaningLang = useConfig((s) => s.uiLang)
+  const level = useConfig((s) => s.level)
+  const languageSnapshot = { conversationLang, meaningLang, level }
+  const replyEnabled = islandReplyEnabled && replyReady
 
-  const stableSpeakerRef = useRef<'user' | 'other'>('other')
-  const llmRef = useRef<ProxyLlmClient | null>(null)
-  const audioRef = useRef<AudioSource | null>(null)
-  const pipelineRef = useRef<Pipeline | null>(null)
-  const storageRef = useRef(new InMemoryConversationStorage())
-  const verifierRef = useRef<EmbeddingSpeakerVerifier | null>(null)
-  const embeddingRef = useRef<Embedding | null>(null)
-  const vadRef = useRef<VAD | null>(null)
-  const realtimeAggregatorRef =
-    useRef<SegmentAggregator<TranscribedAudioSegment> | null>(null)
-  const realtimeRef = useRef<RealtimeSttClient | null>(null)
-  const realtimeBusyRef = useRef(Promise.resolve())
-  const pipelineBusyRef = useRef(Promise.resolve())
-  const draftMetaRef = useRef<{ speaker: 'user' | 'other'; startedAt: number } | null>(null)
-  const inSpeechRef = useRef(false)
-  const uncommittedRef = useRef(false)
+  async function stopSharing() {
+    sharedStream.current?.getTracks().forEach((track) => track.stop())
+    sharedStream.current = null
+  }
 
+  const session = useConversationSession({
+    speechThreshold, minSilenceDurationMs, minSpeechDurationMs, pauseMs, mergeMaxMs, speakerThreshold,
+    sttEnabled: islandSttEnabled,
+    replyEnabled,
+    languageSnapshot,
+    replyStream: playgroundReplyModel.stream,
+    speakerEmbeddingStorage: playgroundVoiceprint,
+    sessionSnapshot: { ...languageSnapshot, uiLang: 'zh', audioSource, microphoneDeviceId: '' },
+    allowUnenrolledMicrophone: true,
+    async getSystemAudioStream() {
+      const tracks = sharedStream.current?.getAudioTracks().filter((track) => track.readyState === 'live')
+      if (!tracks?.length) throw new Error('共享音频已结束。')
+      return new MediaStream(tracks)
+    },
+    stopSystemAudioStream: stopSharing,
+    onAudioFrame: (source, frame) => speakerTracker.current?.accept(source, frame),
+    trace: traceSource,
+  })
+  const { running, loading, state, vadStatus, modelDownloadPercent, error, confidence, start, stop, clearSession, turns, draft, candidateRounds } = session
+  const starting = sharing || Boolean(loading)
+  const locked = running || starting || stopping
+  const stopRef = useRef(stop)
+  stopRef.current = stop
   useEffect(() => {
-    vadRef.current?.updateConfig({
-      speechThreshold,
-      exitThreshold,
-      minSilenceDurationMs,
-      minSpeechDurationMs,
-      speechPadMs: 0,
-    })
-  }, [speechThreshold, exitThreshold, minSilenceDurationMs, minSpeechDurationMs])
+    useConfig.getState().setLiveSessionRunning(locked)
+    if (!locked) speakerTracker.current?.finish()
+  }, [locked])
   useEffect(() => {
-    verifierRef.current?.setThreshold(speakerThreshold)
-  }, [speakerThreshold])
-  useEffect(() => {
-    realtimeAggregatorRef.current?.updateConfig({
-      pauseMs,
-      maxMs: mergeMaxMs,
-    })
-  }, [pauseMs, mergeMaxMs])
-
-  useEffect(() => {
+    disposed.current = false
     return () => {
+      disposed.current = true
+      speakerTracker.current?.dispose()
+      void stopRef.current()
+      void stopSharing()
       useConfig.getState().setLiveSessionRunning(false)
-      useIoTracerStore.getState().stopRecording()
     }
   }, [])
 
-  function reportError(message: string) {
-    setError(message)
-    toast.error(message)
-  }
-
-  async function verifyWithSpan(
-    buffer: ArrayBuffer,
-  ): Promise<'user' | 'other'> {
-    const span = startSpan(IOSpanNames.SpeakerVerify, {
-      attrs: {
-        [IOAttributes.Subsystem]: IOSubsystems.SpeakerVerify,
-        [IOAttributes.SpeakerThreshold]: useConfig.getState().speakerThreshold,
-      },
-    })
-    try {
-      if (!embeddingRef.current || !verifierRef.current) {
-        throw new Error('VOICEPRINT_REQUIRED')
-      }
-      const r = await verifierRef.current.verify(buffer, embeddingRef.current)
-      setConfidence(r.confidence)
-      stableSpeakerRef.current = stabilizeSpeaker(
-        r.similarity,
-        stableSpeakerRef.current,
-        useConfig.getState().speakerThreshold,
-      )
-      span.setAttribute(IOAttributes.SpeakerConfidence, r.confidence)
-      span.setAttribute(IOAttributes.SpeakerResult, stableSpeakerRef.current)
-      span.end()
-      return stableSpeakerRef.current
-    } catch (err) {
-      reportError(`说话人判定失败：${String(err)}`)
-      span.setAttribute(IOAttributes.SpeakerResult, stableSpeakerRef.current)
-      span.end()
-      return stableSpeakerRef.current
-    }
-  }
-
-  async function waitRealtimeCompletedWithSpan(
-    rt: NonNullable<typeof realtimeRef.current>,
-  ): Promise<string> {
-    const span = startSpan(IOSpanNames.SpeechRecognition, {
-      attrs: {
-        [IOAttributes.Subsystem]: IOSubsystems.STT,
-        [IOAttributes.SttPath]: 'realtime',
-      },
-    })
-    try {
-      const text = await rt.waitCompleted()
-      span.setAttribute(IOAttributes.ASRText, text)
-      span.end()
-      return text
-    } catch (e) {
-      span.setAttribute(IOAttributes.ASRAbort, true)
-      span.end()
-      throw e
-    }
-  }
-
-  async function start() {
-    if (!hasEmbedding) {
-      reportError('VOICEPRINT_REQUIRED')
-      return
-    }
-    setError('')
-    setStatusNote('')
-    setLoading('正在检查声纹录入…')
-    setTurns([])
-    setDraft(null)
-    setCandidateRounds([])
-    try {
-      initIOTracer()
-      useIoTracerStore.getState().clear()
-      useIoTracerStore.getState().startRecording()
-
-      if (!verifierRef.current) {
-        verifierRef.current = new EmbeddingSpeakerVerifier({
-          embedAudio: createWorkerEmbedAudio(),
-          storage: createCurrentSpeakerEmbeddingStorage(),
-          threshold: speakerThreshold,
-        })
-      }
-      const embedding = await verifierRef.current.loadEmbedding()
-      embeddingRef.current = embedding
-      if (!embedding) throw new Error('VOICEPRINT_REQUIRED')
-      setMode('auto')
-
-      const cfg = useConfig.getState()
-      const selectedProvider = cfg.transcribeProvider
-      if (!selectedProvider) throw new Error('STT_PROVIDER_REQUIRED')
-
-      setLoading('正在启动麦克风与音频处理…')
-      const audio = new AudioSource()
-      audioRef.current = audio
-      const vadVariant = SILERO_VARIANTS.find((v) => v.id === cfg.vadVariantId) ?? SILERO_VARIANTS[0]
-      const infer = await createSileroInfer(vadVariant, audio.sampleRate)
-      const vad = createVAD(infer, {
-        speechThreshold,
-        exitThreshold,
-        minSilenceDurationMs,
-        minSpeechDurationMs,
-        maxSpeechDurationMs: cfg.mergeMaxMs,
-        speechPadMs: 0,
-        sampleRate: audio.sampleRate,
-      })
-      vadRef.current = vad
-
-      const llm = new ProxyLlmClient(
-        readLanguageSnapshot(),
-        () => useConfig.getState().islandReplyEnabled,
-      )
-      llmRef.current = llm
-      const storage = storageRef.current
-      const pipeline = new Pipeline({ llm, conversation: storage })
-      pipelineRef.current = pipeline
-
-      setActiveSttPath('realtime')
-      setLoading('正在连接实时转写…')
-      const rt = await connectRealtimeSttWithRetry({
-        provider: selectedProvider,
-        language: cfg.conversationLang,
-        handlers: {
-          onPartial: (text) => {
-            const meta = draftMetaRef.current
-            if (!meta) return
-            setDraft({
-              speaker: meta.speaker,
-              text,
-              startedAt: meta.startedAt,
-              endedAt: Date.now(),
-            })
-          },
-          onError: (message) => {
-            reportError(`实时转写：${message}`)
-          },
-        },
-      })
-      realtimeRef.current = rt
-      setStatusNote('实时转写已连接')
-
-      const realtimeAggregator = createSegmentAggregator<TranscribedAudioSegment>({
-        sampleRate: audio.sampleRate,
-        pauseMs: cfg.pauseMs,
-        maxMs: cfg.mergeMaxMs,
-      })
-      realtimeAggregator.onFlush((merged) => {
-        const turn = finalizedTurnFromRealtimeSegments(
-          merged,
-          cfg.conversationLang,
-        )
-        if (!turn) return
-        pipelineBusyRef.current = pipelineBusyRef.current
-          .then(() => pipeline.ingestFinalizedTurn(turn))
-          .catch(() => {})
-      })
-      realtimeAggregatorRef.current = realtimeAggregator
-      attachAudioIoSpans(vad, realtimeAggregator, audio.sampleRate)
-
-      pipeline.on((e: PipelineEvent) => {
-        switch (e.type) {
-          case 'state':
-            setState(e.state)
-            break
-          case 'turnAppended':
-            setTurns((prev) => [...prev, e.turn as TurnView])
-            break
-          case 'candidatesDone':
-            if (!useConfig.getState().islandReplyEnabled) break
-            if (e.candidates.length === 3) {
-              setCandidateRounds((prev) => [
-                { id: e.turnId, candidates: e.candidates },
-                ...prev,
-              ])
-            }
-            setTurns((prev) =>
-              prev.map((t) => (t.id === e.turnId ? { ...t, candidates: e.candidates } : t)),
-            )
-            break
-          case 'candidatesStreaming':
-          case 'candidateDelta':
-          case 'llmAborted':
-          case 'llmFailed':
-            break
-          case 'sttFailed':
-            setTurns((prev) =>
-              prev.map((t) => (t.id === e.turnId ? { ...t, sttFailed: true } as TurnView : t)),
-            )
-            break
-          default: {
-            const _exhaustive: never = e
-            void _exhaustive
-            break
-          }
-        }
-      })
-
-      vad.on('speech-start', () => {
-        setVadStatus('speech')
-        if (!useConfig.getState().islandSttEnabled) {
-          inSpeechRef.current = true
+  async function startSession() {
+    setShareError('')
+    if (audioSource !== 'microphone') {
+      setSharing(true)
+      try {
+        const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true })
+        if (disposed.current || !stream.getAudioTracks().length) {
+          stream.getTracks().forEach((track) => track.stop())
+          if (!disposed.current) setShareError('共享时请选择带音频的来源，并打开「共享音频」。')
           return
         }
-        const startedAt = Date.now()
-        realtimeAggregatorRef.current?.hold()
-        const who = draftMetaRef.current?.speaker ?? stableSpeakerRef.current
-        draftMetaRef.current = { speaker: who, startedAt }
-        setDraft({ speaker: who, text: '', startedAt, endedAt: startedAt })
-        inSpeechRef.current = true
-      })
-      vad.on('speech-end', () => {
-        setVadStatus('silence')
-        inSpeechRef.current = false
-        realtimeAggregatorRef.current?.resume()
-      })
-      vad.on('speech-ready', (e) => {
-        if (!useConfig.getState().islandSttEnabled) return
-        const now = Date.now()
-        const startedAt =
-          draftMetaRef.current?.startedAt ?? now - e.duration * 1000
-        const endedAt = now
+        sharedStream.current = stream
+        for (const track of stream.getTracks()) {
+          track.addEventListener('ended', () => {
+            if (sharedStream.current !== stream) return
+            void stopSession()
+          }, { once: true })
+        }
+      } catch (cause) {
+        if (!disposed.current) {
+          setShareError(cause instanceof DOMException && cause.name === 'NotAllowedError'
+            ? '未授予共享权限。可重试或改用麦克风。' : '无法共享音频，请切换到麦克风或使用支持共享音频的浏览器。')
+        }
+        return
+      } finally {
+        if (!disposed.current) setSharing(false)
+      }
+    }
+    setTranscriptSource(audioSource)
+    setVerifiedSpeakers(audioSource === 'microphone' && hasEmbedding)
+    speakerTracker.current?.dispose()
+    speakerTracker.current = trackLiveSpeakers(audioSource, setSpeakerLanes)
+    startTrace()
+    await start()
+  }
 
-        const rtConn = realtimeRef.current
-        if (!rtConn || !uncommittedRef.current) return
-
-        rtConn.commit()
-        uncommittedRef.current = false
-        const buffer = e.buffer
-        const provisional = draftMetaRef.current?.speaker ?? stableSpeakerRef.current
-        const transcription = waitRealtimeCompletedWithSpan(rtConn).then(
-          (text) => ({ ok: true as const, text }),
-          (error: unknown) => ({ ok: false as const, error }),
-        )
-        const verifiedSpeaker = verifyWithSpan(buffer.buffer as ArrayBuffer)
-        realtimeBusyRef.current = realtimeBusyRef.current
-          .then(async () => {
-            const [outcome, who] = await Promise.all([
-              transcription,
-              verifiedSpeaker,
-            ])
-            if (outcome.ok) {
-              draftMetaRef.current = { speaker: who, startedAt }
-              setDraft((current) =>
-                current?.startedAt === startedAt ? null : current,
-              )
-              realtimeAggregatorRef.current?.feed({
-                buffer,
-                speaker: who,
-                text: outcome.text,
-                startedAt,
-                endedAt,
-              })
-              return
-            }
-            if (isTranscriptionFailed(outcome.error)) {
-              realtimeAggregatorRef.current?.feed({
-                buffer,
-                speaker: provisional,
-                text: '',
-                sttFailed: true,
-                startedAt,
-                endedAt,
-              })
-              return
-            }
-            reportError(`实时转写：${String(outcome.error)}`)
-            realtimeAggregatorRef.current?.feed({
-              buffer,
-              speaker: who,
-              text: '',
-              sttFailed: true,
-              startedAt,
-              endedAt,
-            })
-          })
-          .catch(() => {})
-      })
-
-      await audio.start(async (chunk) => {
-        await vad.processAudio(chunk)
-        if (!useConfig.getState().islandSttEnabled) return
-        if (!inSpeechRef.current) return
-        const rtConn = realtimeRef.current
-        if (!rtConn) return
-        uncommittedRef.current = true
-        rtConn.append(chunk)
-      })
-      setRunning(true)
-      setLiveSessionRunning(true)
-      setLoading('')
-    } catch (e) {
-      reportError((e as Error).message)
-      setLoading('')
-      stop()
+  async function stopSession() {
+    setStopping(true)
+    speakerTracker.current?.finish()
+    try {
+      await stop()
+    } catch (cause) {
+      setShareError(String(cause))
+    } finally {
+      await stopSharing()
+      setStopping(false)
     }
   }
 
-  function stop() {
-    realtimeAggregatorRef.current?.flush()
-    realtimeAggregatorRef.current?.dispose()
-    realtimeAggregatorRef.current = null
-    realtimeRef.current?.finish()
-    realtimeRef.current?.close()
-    realtimeRef.current = null
-    inSpeechRef.current = false
-    uncommittedRef.current = false
-    audioRef.current?.stop()
-    audioRef.current = null
-    pipelineRef.current = null
-    llmRef.current = null
-    vadRef.current = null
-    draftMetaRef.current = null
-    setDraft(null)
-    setRunning(false)
-    setLiveSessionRunning(false)
-    setActiveSttPath('idle')
-    setVadStatus('idle')
-    setConfidence(null)
-    useIoTracerStore.getState().stopRecording()
+  async function clear() {
+    speakerTracker.current?.dispose()
+    speakerTracker.current = null
+    setSpeakerLanes([])
+    await clearSession()
   }
 
-  async function clearSession() {
-    await storageRef.current.clearActiveSession()
-    setTurns([])
-    setDraft(null)
-    setCandidateRounds([])
-    setState('IDLE')
-  }
-
-  return (
-    <StageShell
-      leftTitle="对话"
-      left={<TranscriptPanel turns={turns} draft={draft} />}
-      debugTitle="调试"
-      debug={
-        <div className="flex h-full min-h-0 flex-col gap-3 overflow-auto">
-          <SessionToolbar
-            running={running}
-            loading={loading}
+  const transcript = (
+    <section className="flex h-full min-h-0 min-w-0 flex-col">
+      <div className="flex items-center min-h-15 gap-2 border-b px-4 py-2 sm:px-6">
+        <h2 className="font-semibold">实时转写</h2>
+      </div>
+      <TranscriptPanel turns={turns} draft={draft} source={transcriptSource} verifiedSpeakers={verifiedSpeakers} />
+    </section>
+  )
+  const suggestions = (
+    <section className="flex h-full min-h-0 min-w-0 flex-col">
+      <div className="flex flex-wrap items-center justify-between min-h-15 gap-2 border-b px-4 py-2 sm:px-6">
+        <h2 className="font-semibold">回复建议</h2>
+        <ProductSurfaceToggle />
+      </div>
+      <div className={cn("relative flex min-h-0 flex-1 flex-col overflow-auto px-4 py-4 sm:px-6", floating && 'floating-sim island-stage pb-20')}>
+        {candidateRounds.length > 0 || (state === 'LLM_STREAMING' && replyEnabled) ? (
+          <StickyNoteStack rounds={candidateRounds} maxRounds={candidateRoundsMax} streaming={state === 'LLM_STREAMING' && replyEnabled} />
+        ) : !replyReady ? (
+          <div className="flex justify-center py-8">
+            <Button size="sm" variant="outline" onClick={onConfigureReply}>配置回复模型</Button>
+          </div>
+        ) : !replyEnabled ? (
+          <p className="py-8 text-center text-sm text-muted-foreground">回复建议已暂停。</p>
+        ) : null}
+        {floating && (
+          <IslandBar
             state={state}
             vadStatus={vadStatus}
-            activeSttPath={activeSttPath}
-            mode={mode}
-            confidence={confidence}
-            hasEmbedding={hasEmbedding}
-            statusNote={statusNote}
-            error={error}
-            onStart={() => void start()}
-            onStop={stop}
-            onClear={() => void clearSession()}
-            onGoEnroll={onGoEnroll}
+            sttEnabled={islandSttEnabled}
+            replyEnabled={replyEnabled}
+            onToggleStt={() => patch({ islandSttEnabled: !islandSttEnabled })}
+            onToggleReply={replyReady ? () => patch({ islandReplyEnabled: !islandReplyEnabled }) : onConfigureReply}
           />
-          <Separator />
-          <DebugPanel running={running} />
+        )}
+      </div>
+    </section>
+  )
+  const transcriptionStatus = modelDownloadPercent !== undefined && modelDownloadPercent < 100
+    ? `正在下载 · ${modelDownloadPercent}%`
+    : '正在准备转写'
+  const status = stopping ? '正在结束' : sharing ? '等待共享权限' : loading ? transcriptionStatus : (
+    state === 'LLM_STREAMING' ? '正在生成回复' : vadStatus === 'speech' ? '听写中' : '正在监听'
+  )
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-4">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <Select value={audioSource} onValueChange={(value) => setAudioSource(value as SessionAudioSource)} disabled={locked}>
+            <SelectTrigger className="w-auto" aria-label="音频来源"><MicrophoneIcon /><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="microphone">{sourceLabels.microphone}</SelectItem>
+              <SelectItem value="system" disabled={!navigator.mediaDevices?.getDisplayMedia}>{sourceLabels.system}</SelectItem>
+              <SelectItem value="both" disabled={!navigator.mediaDevices?.getDisplayMedia}>{sourceLabels.both}</SelectItem>
+            </SelectContent>
+          </Select>
+          {running || loading ? (
+            <Button variant="destructive" onClick={() => void stopSession()} disabled={stopping}><StopIcon />停止会话</Button>
+          ) : (
+            <Button onClick={() => void startSession()} disabled={starting || stopping}>
+              {starting ? <LoaderIcon className="animate-spin" /> : <PlayIcon />}开始会话
+            </Button>
+          )}
+          {locked && <Badge variant={running ? 'default' : 'secondary'} role="status">{status}</Badge>}
         </div>
-      }
-      stage={
-        productSurfaceMode === 'floating' ? (
-          <div className="floating-sim island-stage relative flex h-full min-h-0 flex-col">
-            <p className="pointer-events-none absolute left-3 top-2 z-10 text-[10px] font-medium tracking-wide text-muted-foreground/80">
-              悬浮模拟 · Island + 便利贴
-            </p>
-            <div className="min-h-0 flex-1 px-2 pt-6 sm:px-4">
-              <StickyNoteStack
-                rounds={candidateRounds}
-                maxRounds={candidateRoundsMax}
-                streaming={state === 'LLM_STREAMING' && islandReplyEnabled}
-              />
-            </div>
-            <IslandBar
-              running={running}
-              loading={loading}
-              state={state}
-              vadStatus={vadStatus}
-              sttEnabled={islandSttEnabled}
-              replyEnabled={islandReplyEnabled}
-              onToggleStt={() =>
-                patch({ islandSttEnabled: !useConfig.getState().islandSttEnabled })
-              }
-              onToggleReply={() =>
-                patch({ islandReplyEnabled: !useConfig.getState().islandReplyEnabled })
-              }
-              onStart={() => void start()}
-              onStop={stop}
-            />
-          </div>
-        ) : (
-          <div className="flex h-full min-h-0 flex-col bg-background">
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/50 px-4 py-2.5">
-              <div>
-                <p className="text-sm font-medium">回复建议</p>
-                <p className="text-xs text-muted-foreground">窗口模式 · 应用内卡片</p>
-              </div>
-              {!running ? (
-                <Button size="sm" onClick={() => void start()} disabled={!!loading || !hasEmbedding}>
-                  {loading || '开始会话'}
-                </Button>
-              ) : (
-                <Button size="sm" variant="destructive" onClick={stop}>
-                  停止
-                </Button>
-              )}
-            </div>
-            <div className="min-h-0 flex-1 px-3 py-3 sm:px-5">
-              <StickyNoteStack
-                rounds={candidateRounds}
-                maxRounds={candidateRoundsMax}
-                streaming={state === 'LLM_STREAMING' && islandReplyEnabled}
-              />
-            </div>
-          </div>
-        )
-      }
-    />
+        <div className="flex flex-wrap items-center gap-2">
+          <TraceDialog><Button variant="outline"><PulseIcon />Trace</Button></TraceDialog>
+          <Sheet>
+            <SheetTrigger asChild><Button variant="outline" size="icon" aria-label="管线参数"><Tuning2Icon /></Button></SheetTrigger>
+            <SheetContent className="w-full overflow-auto sm:max-w-md">
+              <SheetHeader><SheetTitle>管线参数</SheetTitle><SheetDescription>调整语音活动检测、声纹和话轮合并。</SheetDescription></SheetHeader>
+              <div className="mt-4"><DebugPanel running={locked} confidence={confidence} /></div>
+            </SheetContent>
+          </Sheet>
+          <Button variant="ghost" size="icon" aria-label="清空会话" disabled={locked || (!turns.length && !speakerLanes.length)} onClick={() => void clear()}><EraserIcon /></Button>
+        </div>
+      </div>
+      {audioSource !== 'microphone' && !locked && (
+        <p className="text-sm text-muted-foreground">选择要共享的来源，并打开「共享音频」。</p>
+      )}
+      {(shareError || error) && (
+        <p role="alert" className="text-sm text-destructive">
+          {shareError || (error === 'LLM_BROWSER_CONNECTION' ? '浏览器无法连接回复服务。如果服务限制跨域请求，请用 macOS 版。' : error)}
+        </p>
+      )}
+      {speakerLanes.length > 0 && <LiveSpeakerTracks lanes={speakerLanes} />}
+      {wide ? (
+        <Card className="flex min-h-96 min-w-0 flex-1 overflow-hidden">
+          <ResizablePanelGroup orientation="horizontal" className="h-auto min-h-0 flex-1">
+            <ResizablePanel id="transcript" defaultSize="56%" minSize="33%">{transcript}</ResizablePanel>
+            <ResizableHandle withHandle aria-label="调整转写与回复建议的宽度" />
+            <ResizablePanel id="suggestions" defaultSize="44%" minSize="30%">{suggestions}</ResizablePanel>
+          </ResizablePanelGroup>
+        </Card>
+      ) : (
+        <div className="grid min-w-0 gap-4">
+          <Card className="h-80 min-w-0 overflow-hidden">{transcript}</Card>
+          <Card className="min-h-56 min-w-0 overflow-hidden">{suggestions}</Card>
+        </div>
+      )}
+    </div>
   )
 }

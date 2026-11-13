@@ -1,3 +1,4 @@
+import { useId } from 'react'
 import {
   Input,
   Label,
@@ -12,7 +13,6 @@ import {
   TooltipTrigger,
 } from '@kibotalk/ui'
 import type { AppLanguage, LearnerLevel } from '@kibotalk/conversation'
-import { SILERO_VARIANTS } from '@kibotalk/app-shared'
 import {
   APP_LANGUAGE_OPTIONS,
   LEARNER_LEVEL_OPTIONS,
@@ -90,6 +90,7 @@ export function ThresholdSlider({
         <span className="text-xs tabular-nums text-foreground">{readout}</span>
       </div>
       <Slider
+        aria-label={label}
         value={[value]}
         min={0}
         max={1}
@@ -104,31 +105,24 @@ export function ThresholdSlider({
 }
 
 /** VAD cut stage: thresholds, silence, min speech. */
-export function VadParamsFields() {
+export function VadParamsFields({ disabled }: { disabled?: boolean } = {}) {
   const speechThreshold = useConfig((s) => s.speechThreshold)
-  const exitThreshold = useConfig((s) => s.exitThreshold)
   const minSilenceDurationMs = useConfig((s) => s.minSilenceDurationMs)
   const minSpeechDurationMs = useConfig((s) => s.minSpeechDurationMs)
   const patch = useConfig((s) => s.patch)
   return (
-    <>
+    <fieldset className="grid gap-3" disabled={disabled}>
       <ThresholdSlider
         label="进入阈值"
         hint="语音概率超过此值视为开始说话（默认 0.2）"
         value={speechThreshold}
         onChange={(v) => patch({ speechThreshold: v })}
       />
-      <ThresholdSlider
-        label="退出阈值"
-        hint="语音概率低于此值并持续静音后结束本段（默认 0.1）"
-        value={exitThreshold}
-        onChange={(v) => patch({ exitThreshold: v })}
-      />
       <NumberField label="静音结束 ms（400）" value={minSilenceDurationMs} step={50} min={0}
         onChange={(v) => patch({ minSilenceDurationMs: v })} />
       <NumberField label="最短语音 ms（200）" value={minSpeechDurationMs} step={50} min={0}
         onChange={(v) => patch({ minSpeechDurationMs: v })} />
-    </>
+    </fieldset>
   )
 }
 
@@ -147,33 +141,8 @@ export function MergeParamsFields({ disabled }: { disabled?: boolean }) {
   )
 }
 
-/** VAD model selector (Silero v5 / v6.2). */
-export function VadModelSelect({ disabled }: { disabled?: boolean }) {
-  const vadVariantId = useConfig((s) => s.vadVariantId)
-  const patch = useConfig((s) => s.patch)
-  return (
-    <div className="flex flex-col gap-1.5">
-      <Label className="text-xs text-muted-foreground">VAD 模型</Label>
-      <Select
-        value={vadVariantId}
-        onValueChange={(v) => patch({ vadVariantId: v })}
-        disabled={disabled}
-      >
-        <SelectTrigger className="h-9">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {SILERO_VARIANTS.map((v) => (
-            <SelectItem key={v.id} value={v.id}>{v.label}</SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </div>
-  )
-}
-
-/** Conversation language + product UI language (also the derived meaning language). */
 export function LanguagePrefsFields({ disabled }: { disabled?: boolean }) {
+  const id = useId()
   const conversationLang = useConfig((s) => s.conversationLang)
   const uiLang = useConfig((s) => s.uiLang)
   const level = useConfig((s) => s.level)
@@ -181,15 +150,15 @@ export function LanguagePrefsFields({ disabled }: { disabled?: boolean }) {
   const setUiLang = useConfig((s) => s.setUiLang)
   const setCurrentLevel = useConfig((s) => s.setCurrentLevel)
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex flex-col gap-1.5">
-        <Label className="text-xs text-muted-foreground">对话语言</Label>
+    <div className="grid gap-4">
+      <div className="grid gap-2">
+        <Label htmlFor={`${id}-conversation`}>对话语言</Label>
         <Select
           value={conversationLang}
           onValueChange={(v) => setConversationLang(v as AppLanguage)}
           disabled={disabled}
         >
-          <SelectTrigger className="h-9">
+          <SelectTrigger id={`${id}-conversation`}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -199,14 +168,14 @@ export function LanguagePrefsFields({ disabled }: { disabled?: boolean }) {
           </SelectContent>
         </Select>
       </div>
-      <div className="flex flex-col gap-1.5">
-        <Label className="text-xs text-muted-foreground">界面 / 候选释义语言</Label>
+      <div className="grid gap-2">
+        <Label htmlFor={`${id}-meaning`}>候选释义语言</Label>
         <Select
           value={uiLang}
           onValueChange={(v) => setUiLang(v as AppLanguage)}
           disabled={disabled}
         >
-          <SelectTrigger className="h-9">
+          <SelectTrigger id={`${id}-meaning`}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -216,14 +185,14 @@ export function LanguagePrefsFields({ disabled }: { disabled?: boolean }) {
           </SelectContent>
         </Select>
       </div>
-      <div className="flex flex-col gap-1.5">
-        <Label className="text-xs text-muted-foreground">水平</Label>
+      <div className="grid gap-2">
+        <Label htmlFor={`${id}-level`}>当前水平</Label>
         <Select
           value={level}
           onValueChange={(v) => setCurrentLevel(v as LearnerLevel)}
           disabled={disabled}
         >
-          <SelectTrigger className="h-9">
+          <SelectTrigger id={`${id}-level`}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>

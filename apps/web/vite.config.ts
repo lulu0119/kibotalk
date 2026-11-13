@@ -11,12 +11,8 @@ export default defineConfig({
       },
     },
   },
-  server: {
-    proxy: {
-      '/api': {
-        target: 'http://127.0.0.1:8787',
-        ws: true,
-      },
-    },
+  worker: { format: 'es' },
+  optimizeDeps: {
+    exclude: ['@sherpaw/asr', '@sherpaw/vad', '@sherpaw/preloader', '@sherpaw/speaker-identification'],
   },
 })

@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
+import type { LlmSettingsStore } from '@kibotalk/llm'
+import { ReplyModelSettings, TranscriptionModelSettings } from './ModelSettings'
 import type {
   AppLanguage,
   LearnerLevel,
@@ -32,23 +34,24 @@ import {
   Switch,
 } from '@kibotalk/ui'
 import {
-  ArrowLeft,
-  CircleCheck,
-  Fingerprint,
-  Info,
-  Languages,
-  Lock,
-  LogOut,
-  Mic,
-  MonitorUp,
-  Palette,
-  RotateCcw,
-  Settings,
-  ShieldCheck,
-  Trash2,
-} from 'lucide-react'
+  ArrowLeftIcon,
+  CheckCircleIcon,
+  CpuIcon,
+  InfoCircleIcon,
+  LockKeyholeIcon,
+  LogoutIcon,
+  MicrophoneIcon,
+  Palette2Icon,
+  RestartIcon,
+  ScreencastIcon,
+  SettingsIcon,
+  ShieldCheckIcon,
+  TranslateIcon,
+  TrashBinTrashIcon,
+  UserSpeakRoundedIcon,
+} from '@kibotalk/ui/icons'
 
-type SettingsSection = 'general' | 'conversation' | 'voiceprint' | 'permissions' | 'about'
+type SettingsSection = 'general' | 'conversation' | 'models' | 'voiceprint' | 'permissions' | 'about'
 type ConfirmAction = 'deleteVoiceprint' | null
 
 export type PermissionState = 'granted' | 'not-determined' | 'denied' | 'restricted' | 'unknown'
@@ -58,6 +61,7 @@ export type SettingsPageProps = {
   embedded?: boolean
   prefs: LanguagePrefs
   sessionActive: boolean
+  replyModelSettings?: LlmSettingsStore
   onPrefsChange: (prefs: LanguagePrefs) => void
   onBack: () => void
   onManageVoiceprint: () => void
@@ -113,6 +117,7 @@ export function SettingsPage({
   embedded = false,
   prefs,
   sessionActive,
+  replyModelSettings,
   onPrefsChange,
   onBack,
   onManageVoiceprint,
@@ -146,11 +151,12 @@ export function SettingsPage({
   const sections = useMemo(
     () =>
       [
-        { id: 'general' as const, label: t('general'), icon: Settings },
-        { id: 'conversation' as const, label: t('conversationSettings'), icon: Languages },
-        { id: 'voiceprint' as const, label: t('voiceprint'), icon: Fingerprint },
-        { id: 'permissions' as const, label: t('permissions'), icon: ShieldCheck },
-        { id: 'about' as const, label: t('about'), icon: Info },
+        { id: 'general' as const, label: t('general'), icon: SettingsIcon },
+        { id: 'conversation' as const, label: t('conversationSettings'), icon: TranslateIcon },
+        { id: 'models' as const, label: t('modelSettings'), icon: CpuIcon },
+        { id: 'voiceprint' as const, label: t('voiceprint'), icon: UserSpeakRoundedIcon },
+        { id: 'permissions' as const, label: t('permissions'), icon: ShieldCheckIcon },
+        { id: 'about' as const, label: t('about'), icon: InfoCircleIcon },
       ],
     [t],
   )
@@ -188,7 +194,7 @@ export function SettingsPage({
   }
   const activeLock = sessionActive ? (
     <div className="flex w-full max-w-sm items-start gap-2 rounded-md bg-accent px-3 py-2 text-xs leading-relaxed text-accent-foreground">
-      <Lock className="mt-0.5 size-3.5 shrink-0" />
+      <LockKeyholeIcon className="mt-0.5 size-3.5 shrink-0" />
       <span className="min-w-0 flex-1 break-words">{t('lockedWhileActive')}</span>
     </div>
   ) : null
@@ -203,7 +209,7 @@ export function SettingsPage({
         <aside className="min-w-0 border-b border-border bg-muted/50 p-3 sm:border-b-0 sm:border-r">
           <div className="mb-3 flex items-center gap-2 px-1 sm:mb-6">
             <Button variant="ghost" size="icon" onClick={onBack} aria-label={t('back')}>
-              <ArrowLeft className="size-4" />
+              <ArrowLeftIcon className="size-4" />
             </Button>
             <strong>KiboTalk</strong>
           </div>
@@ -211,19 +217,17 @@ export function SettingsPage({
             {sections.map((item) => {
               const Icon = item.icon
               return (
-                <button
+                <Button
                   key={item.id}
                   type="button"
+                  variant={section === item.id ? 'soft' : 'ghost'}
+                  aria-current={section === item.id ? 'page' : undefined}
                   onClick={() => setSection(item.id)}
-                  className={`flex min-h-11 shrink-0 items-center gap-2 rounded-md px-3 py-2 text-xs font-semibold transition-colors sm:w-full ${
-                    section === item.id
-                      ? 'bg-accent text-accent-foreground'
-                      : 'text-muted-foreground hover:bg-foreground/5'
-                  }`}
+                  className="shrink-0 justify-start sm:w-full"
                 >
-                  <Icon className="size-4 shrink-0" />
-                  <span className="whitespace-nowrap">{item.label}</span>
-                </button>
+                  <Icon />
+                  {item.label}
+                </Button>
               )
             })}
           </nav>
@@ -259,7 +263,7 @@ export function SettingsPage({
               <SettingRow title={t('theme')}>
                 <Select value={prefs.theme} onValueChange={(value) => update({ theme: value as ProductTheme })}>
                   <SelectTrigger className="w-full sm:w-44">
-                    <Palette className="size-4" />
+                    <Palette2Icon className="size-4" />
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -353,7 +357,7 @@ export function SettingsPage({
                       onValueChange={(microphoneDeviceId) => update({ microphoneDeviceId })}
                     >
                       <SelectTrigger className="w-full sm:w-56">
-                        <Mic className="size-4" />
+                        <MicrophoneIcon className="size-4" />
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -373,6 +377,22 @@ export function SettingsPage({
             </div>
           ) : null}
 
+          {section === 'models' ? (
+            <div className="space-y-6">
+              <SettingsGroup>
+                <div className="p-4">
+                  <TranscriptionModelSettings language={prefs.conversationLang} locked={sessionActive} />
+                </div>
+              </SettingsGroup>
+              <SettingsGroup>
+                <div className="space-y-4 p-4">
+                  <h2 className="text-sm font-semibold">{t('replyModel')}</h2>
+                  <ReplyModelSettings store={replyModelSettings} />
+                </div>
+              </SettingsGroup>
+            </div>
+          ) : null}
+
           {section === 'voiceprint' ? (
             <SettingsGroup>
               <SettingRow title={t('voiceprint')}>
@@ -384,9 +404,9 @@ export function SettingsPage({
                   }`}
                 >
                   {voiceprintReady ? (
-                    <CircleCheck className="size-4" />
+                    <CheckCircleIcon className="size-4" />
                   ) : (
-                    <Fingerprint className="size-4" />
+                    <UserSpeakRoundedIcon className="size-4" />
                   )}
                   {voiceprintReady ? t('voiceprintReady') : t('voiceprintMissing')}
                 </span>
@@ -394,9 +414,9 @@ export function SettingsPage({
               <SettingRow title={voiceprintReady ? t('rerecordVoiceprint') : t('recordVoiceTitle')}>
                 <Button variant="soft" disabled={sessionActive} onClick={onManageVoiceprint}>
                   {voiceprintReady ? (
-                    <RotateCcw className="size-4" />
+                    <RestartIcon className="size-4" />
                   ) : (
-                    <Mic className="size-4" />
+                    <MicrophoneIcon className="size-4" />
                   )}
                   {voiceprintReady ? t('rerecordVoiceprint') : t('recordVoiceTitle')}
                 </Button>
@@ -407,7 +427,7 @@ export function SettingsPage({
                   disabled={sessionActive || !voiceprintReady}
                   onClick={() => setConfirmAction('deleteVoiceprint')}
                 >
-                  <Trash2 className="size-4" />
+                  <TrashBinTrashIcon className="size-4" />
                   {t('deleteVoiceprint')}
                 </Button>
               </SettingRow>
@@ -419,12 +439,12 @@ export function SettingsPage({
               <SettingRow title={t('microphonePermission')}>
                 {permissionAllowed(microphonePermission) ? (
                   <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-400">
-                    <CircleCheck className="size-4" />
+                    <CheckCircleIcon className="size-4" />
                     {t('granted')}
                   </span>
                 ) : (
                   <Button variant="soft" onClick={() => void requestBrowserMicrophone()}>
-                    <Mic className="size-4" />
+                    <MicrophoneIcon className="size-4" />
                     {t('requestPermission')}
                   </Button>
                 )}
@@ -433,12 +453,12 @@ export function SettingsPage({
                 <SettingRow title={t('screenPermission')}>
                   {permissionAllowed(screenPermission) ? (
                     <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-400">
-                      <CircleCheck className="size-4" />
+                      <CheckCircleIcon className="size-4" />
                       {t('granted')}
                     </span>
                   ) : (
                     <Button variant="soft" onClick={() => void onRequestScreenPermission?.()}>
-                      <MonitorUp className="size-4" />
+                      <ScreencastIcon className="size-4" />
                       {t('openSystemSettings')}
                     </Button>
                   )}
@@ -455,7 +475,7 @@ export function SettingsPage({
               {platform === 'desktop' && onQuit ? (
                 <SettingRow title={t('quit')} danger>
                   <Button variant="destructive" onClick={onQuit}>
-                    <LogOut className="size-4" />
+                    <LogoutIcon className="size-4" />
                     {t('quit')}
                   </Button>
                 </SettingRow>

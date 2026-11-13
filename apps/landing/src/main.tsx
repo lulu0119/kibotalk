@@ -8,8 +8,8 @@ import './index.css'
 const root = document.getElementById('root')
 if (!root) throw new Error('root element missing')
 
-const locale = localeFromPath(window.location.pathname)
-window.localStorage.setItem('kibotalk-landing-language', locale)
+const locale = localeFromPath(window.location.pathname.slice(import.meta.env.BASE_URL.length))
+try { window.localStorage.setItem('kibotalk-landing-language', locale) } catch {}
 
 createRoot(root).render(
   <StrictMode>

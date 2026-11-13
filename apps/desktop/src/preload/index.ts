@@ -56,8 +56,20 @@ const api: KiboTalkDesktopApi = {
       return () => ipcRenderer.removeListener(IPC_CHANNEL.sessionCommandEvent, listener)
     },
   },
+  replyModel: {
+    load: () => ipcRenderer.invoke(IPC_CHANNEL.replyModelLoad),
+    save: (settings) => ipcRenderer.invoke(IPC_CHANNEL.replyModelSave, settings),
+    stream: (input, onMessage) => {
+      const { port1, port2 } = new MessageChannel()
+      port1.onmessage = ({ data }) => {
+        onMessage(data)
+        if (data.type !== 'token') port1.close()
+      }
+      ipcRenderer.postMessage(IPC_CHANNEL.replyModelStream, input, [port2])
+      return () => port1.close()
+    },
+  },
   app: {
-    getLocalApiToken: () => ipcRenderer.invoke(IPC_CHANNEL.appGetLocalApiToken),
     previousHistoryUserId: ipcRenderer.sendSync(IPC_CHANNEL.appPreviousHistoryUserId),
     setLaunchAtLogin: (enabled) => ipcRenderer.invoke(IPC_CHANNEL.appSetLaunchAtLogin, enabled),
     requestQuit: () => ipcRenderer.invoke(IPC_CHANNEL.appRequestQuit),

@@ -1,3 +1,5 @@
+import type { ChatMessage, LlmSettingsStore, ReplyStreamMessage } from '@kibotalk/llm'
+
 /**
  * IPC channel names + payload/result types shared by main, preload, and
  * renderer. Plain `ipcMain.handle` / `contextBridge` — no eventa dependency
@@ -51,7 +53,9 @@ export const IPC_CHANNEL = {
   islandSetPosition: 'island:set-position',
   sessionUpdateState: 'session:update-state',
   sessionCommandEvent: 'session:command',
-  appGetLocalApiToken: 'app:get-local-api-token',
+  replyModelLoad: 'reply-model:load',
+  replyModelSave: 'reply-model:save',
+  replyModelStream: 'reply-model:stream',
   appPreviousHistoryUserId: 'app:previous-history-user-id',
   appSetLaunchAtLogin: 'app:set-launch-at-login',
   appRequestQuit: 'app:request-quit',
@@ -104,8 +108,10 @@ export type KiboTalkDesktopApi = {
     updateState: (state: DesktopSessionState) => Promise<void>
     onCommand: (callback: (command: DesktopSessionCommand) => void) => () => void
   }
+  replyModel: LlmSettingsStore & {
+    stream: (input: ChatMessage[], onMessage: (message: ReplyStreamMessage) => void) => () => void
+  }
   app: {
-    getLocalApiToken: () => Promise<string>
     previousHistoryUserId: string | null
     setLaunchAtLogin: (enabled: boolean) => Promise<void>
     requestQuit: () => Promise<void>

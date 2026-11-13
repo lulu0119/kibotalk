@@ -4,38 +4,22 @@ import { Pipeline } from '@kibotalk/pipeline'
 import type {
   ConversationSession,
   ConversationSessionSnapshot,
-  ConversationSessionStart,
   ConversationStorage,
   ConversationTurn,
   ReplyCandidate,
 } from '@kibotalk/conversation'
 import { InMemoryConversationStorage } from '@kibotalk/conversation'
-import {
-  EmbeddingSpeakerVerifier,
-  stabilizeSpeaker,
-} from '@kibotalk/speaker'
-import type { Embedding } from '@kibotalk/speaker'
-import { createVAD } from '@kibotalk/audio/vad'
-import type { VAD } from '@kibotalk/audio/vad'
-import { createSegmentAggregator } from '@kibotalk/audio/aggregator'
-import type { SegmentAggregator } from '@kibotalk/audio/aggregator'
-import { AudioSource } from '../audio/audio-source'
-import { attachAudioIoSpans } from '../audio/io-spans'
-import { createSileroInfer, SILERO_VARIANTS } from '../audio/silero-vad'
+import { EmbeddingSpeakerVerifier, stabilizeSpeaker, type EmbeddingStorage } from '@kibotalk/speaker'
+import type { ReplyTextStream } from '@kibotalk/llm'
+import { beginSpan, trackPath, type TraceSink } from '@proj-airi/trace-kit'
+import { VoiceAttributes, VoiceTracks } from '@proj-airi/trace-kit/voice'
+import { createSpeechEngine } from '../audio/speech-engine'
+import { selectTranscriptionModel } from '../audio/local-models'
 import { createWorkerEmbedAudio } from '../audio/speaker-embed'
 import { localizedSessionTitle } from '../i18n'
 import { createCurrentSpeakerEmbeddingStorage } from '../speaker-embedding-storage'
-import { ProxyLlmClient, type SessionLanguageSnapshot } from '../proxy-clients'
-import {
-  connectRealtimeSttWithRetry,
-  isTranscriptionFailed,
-  type RealtimeSttClient,
-} from '../realtime-stt-client'
-import { defaultSttProvider, fetchSttProviders } from '../stt-providers'
-import {
-  finalizedTurnFromRealtimeSegments,
-  type TranscribedAudioSegment,
-} from './realtime-turn'
+import { browserReplyModel, createReplyClient, type SessionLanguageSnapshot } from '../reply-model'
+import { createSessionCapture, type SessionCapture } from './capture-session'
 
 export type SessionTurn = ConversationTurn & { candidates?: ReplyCandidate[] }
 
@@ -53,38 +37,41 @@ export type ProductSessionLifecycle = 'restoring' | 'stopped' | 'starting' | 'ru
 /** The knobs `defaultAppConfig` hardcodes for product apps and the playground exposes as sliders. */
 export type ConversationSessionParams = {
   speechThreshold: number
-  exitThreshold: number
   minSilenceDurationMs: number
   minSpeechDurationMs: number
-  vadVariantId: string
   pauseMs: number
   mergeMaxMs: number
   speakerThreshold: number
-  candidateRoundsMax: number
   sttEnabled: boolean
   replyEnabled: boolean
   languageSnapshot: SessionLanguageSnapshot
+  replyStream?: ReplyTextStream
+  speakerEmbeddingStorage?: EmbeddingStorage
+  trace?: TraceSink
   /** Defaults to a fresh `InMemoryConversationStorage` (playground behavior). */
   storage?: ConversationStorage
   /** Product shells persist lifecycle/history; playground sessions stay ephemeral. */
   persistSessionLifecycle?: boolean
   /** Full settings snapshot frozen when a persisted session begins. */
   sessionSnapshot?: ConversationSessionSnapshot
-  /** Desktop-only system-audio stream factory; Web leaves this unset. */
+  /** Allow an unclassified microphone input, used by the playground. */
+  allowUnenrolledMicrophone?: boolean
+  /** System-audio stream factory supplied by the host. */
   getSystemAudioStream?: () => Promise<MediaStream>
   stopSystemAudioStream?: () => Promise<void>
+  /** Receives the 16 kHz frame before the speech worker takes ownership. Copy it to keep it. */
+  onAudioFrame?: Parameters<typeof createSessionCapture>[0]['onAudioFrame']
 }
 
 /**
  * The full live-session orchestration: mic capture → VAD → speaker
- * verification → realtime STT (Manual commit) → TurnGate merge →
+ * verification and Sherpaw transcription → TurnGate merge →
  * `ingestFinalizedTurn` → LLM reply candidates via `Pipeline`.
  */
 export function useConversationSession(params: ConversationSessionParams) {
   const [running, setRunning] = useState(false)
-  const [loading, setLoading] = useState('')
+  const [loadingModel, setLoadingModel] = useState<{ name: string; percent?: number } | null>(null)
   const [error, setError] = useState('')
-  const [statusNote, setStatusNote] = useState('')
   const [state, setState] = useState('IDLE')
   const [turns, setTurns] = useState<SessionTurn[]>([])
   const [draft, setDraft] = useState<SessionDraft | null>(null)
@@ -99,46 +86,22 @@ export function useConversationSession(params: ConversationSessionParams) {
   const [activeSession, setActiveSession] = useState<ConversationSession | null>(null)
   const [recoveredUnexpectedPause, setRecoveredUnexpectedPause] = useState(false)
 
-  const stableSpeakerRef = useRef<'user' | 'other'>('other')
   const paramsRef = useRef(params)
   paramsRef.current = params
-
-  const llmRef = useRef<ProxyLlmClient | null>(null)
-  const audioRef = useRef<AudioSource | null>(null)
-  const systemAudioRef = useRef<AudioSource | null>(null)
+  const storageRef = useRef<ConversationStorage | null>(null)
+  const storage = (storageRef.current ??= params.storage ?? new InMemoryConversationStorage())
+  const captureRef = useRef<SessionCapture | null>(null)
   const pipelineRef = useRef<Pipeline | null>(null)
-  const settlingPipelineRef = useRef<Pipeline | null>(null)
-  const storageRef = useRef<ConversationStorage>(params.storage ?? new InMemoryConversationStorage())
-  const verifierRef = useRef<EmbeddingSpeakerVerifier | null>(null)
-  const embeddingRef = useRef<Embedding | null>(null)
-  const vadRef = useRef<VAD | null>(null)
-  const systemVadRef = useRef<VAD | null>(null)
-  const realtimeAggregatorRef =
-    useRef<SegmentAggregator<TranscribedAudioSegment> | null>(null)
-  const systemRealtimeAggregatorRef =
-    useRef<SegmentAggregator<TranscribedAudioSegment> | null>(null)
-  const realtimeRef = useRef<RealtimeSttClient | null>(null)
-  const systemRealtimeRef = useRef<RealtimeSttClient | null>(null)
-  const realtimeBusyRef = useRef(Promise.resolve())
-  const pipelineBusyRef = useRef(Promise.resolve())
-  const startInFlightRef = useRef(false)
-  const draftMetaRef = useRef<{ speaker: 'user' | 'other'; startedAt: number } | null>(null)
-  const draftRef = useRef(draft)
-  draftRef.current = draft
+  const startingRef = useRef<AbortController | null>(null)
+  const pipelineWorkRef = useRef(Promise.resolve())
+  const teardownRef = useRef<Promise<void> | null>(null)
   const pauseRef = useRef<(reason?: 'user' | 'unexpected') => Promise<void>>(async () => {})
   pauseRef.current = pause
-  /** Realtime: stream mic while Silero says in-speech (not wait for speech-ready). */
-  const inSpeechRef = useRef(false)
-  const systemInSpeechRef = useRef(false)
-  /** True after append until commit completes — blocks next speech stream from mixing. */
-  const uncommittedRef = useRef(false)
-  const systemUncommittedRef = useRef(false)
 
   useEffect(() => {
     if (!params.persistSessionLifecycle) return
     let cancelled = false
-    void storageRef.current
-      .getActiveSession()
+    void storage.getActiveSession()
       .then(async (session) => {
         if (cancelled) return
         if (!session) {
@@ -147,7 +110,7 @@ export function useConversationSession(params: ConversationSessionParams) {
         }
         const restored =
           session.status === 'running'
-            ? await storageRef.current.pauseActiveSession('unexpected')
+            ? await storage.pauseActiveSession('unexpected')
             : session
         if (cancelled || !restored) return
         setTurns(
@@ -168,7 +131,7 @@ export function useConversationSession(params: ConversationSessionParams) {
       })
       .catch((cause) => {
         if (cancelled) return
-        reportError(String(cause))
+        setError(String(cause))
         setLifecycle('stopped')
       })
     return () => {
@@ -179,569 +142,231 @@ export function useConversationSession(params: ConversationSessionParams) {
   }, [])
 
   useEffect(() => {
-    const config = {
-      speechThreshold: params.speechThreshold,
-      exitThreshold: params.exitThreshold,
-      minSilenceDurationMs: params.minSilenceDurationMs,
-      minSpeechDurationMs: params.minSpeechDurationMs,
-      speechPadMs: 0,
-    }
-    vadRef.current?.updateConfig(config)
-    systemVadRef.current?.updateConfig(config)
-  }, [params.speechThreshold, params.exitThreshold, params.minSilenceDurationMs, params.minSpeechDurationMs])
-  useEffect(() => {
-    verifierRef.current?.setThreshold(params.speakerThreshold)
-  }, [params.speakerThreshold])
-  useEffect(() => {
-    const config = { pauseMs: params.pauseMs, maxMs: params.mergeMaxMs }
-    realtimeAggregatorRef.current?.updateConfig(config)
-    systemRealtimeAggregatorRef.current?.updateConfig(config)
+    captureRef.current?.updateTurnGate(params.pauseMs, params.mergeMaxMs)
   }, [params.pauseMs, params.mergeMaxMs])
 
-  function reportError(message: string) {
-    setError(message)
-  }
-
-  async function verifySpeaker(buffer: ArrayBuffer): Promise<'user' | 'other'> {
-    const audioSource = paramsRef.current.sessionSnapshot?.audioSource
-    if (audioSource === 'both') return 'user'
-    if (audioSource === 'system') return 'other'
-    if (!embeddingRef.current || !verifierRef.current) {
-      throw new Error('VOICEPRINT_REQUIRED')
-    }
-    try {
-      const r = await verifierRef.current.verify(buffer, embeddingRef.current)
-      setConfidence(r.confidence)
-      stableSpeakerRef.current = stabilizeSpeaker(
-        r.similarity,
-        stableSpeakerRef.current,
-        paramsRef.current.speakerThreshold,
-      )
-      return stableSpeakerRef.current
-    } catch (err) {
-      reportError(`说话人判定失败：${String(err)}`)
-      return stableSpeakerRef.current
-    }
-  }
-
   async function start(options: { resume?: boolean } = {}) {
-    if (startInFlightRef.current || lifecycle === 'starting' || running) return
-    startInFlightRef.current = true
+    if (startingRef.current || teardownRef.current || captureRef.current) return
+    const starting = new AbortController()
+    startingRef.current = starting
+    const signal = starting.signal
+    const p = paramsRef.current
+    const snapshot = options.resume && activeSession ? activeSession.snapshot : p.sessionSnapshot
+    const languageSnapshot = snapshot ?? p.languageSnapshot
+    const source = snapshot?.audioSource ?? 'microphone'
+    const model = selectTranscriptionModel(languageSnapshot.conversationLang)
+
     setError('')
-    setStatusNote('')
-    setLoading('正在检查声纹录入…')
+    setLoadingModel({ name: model.name })
     setLifecycle('starting')
-    const resuming = options.resume === true
-    if (!resuming) setTurns([])
     setDraft(null)
-    if (!resuming) setCandidateRounds([])
+    setMode('checking')
+    let startedPersistedSession = false
+    let capture: SessionCapture | undefined
     try {
-      const selectedProvider = defaultSttProvider(await fetchSttProviders())
-      if (!selectedProvider) {
-        reportError('LOCAL_STT_UNAVAILABLE')
-        setLoading('')
-        setLifecycle(resuming ? 'paused' : 'stopped')
-        return
-      }
-      let pendingSessionStart: ConversationSessionStart | null = null
-      if (!verifierRef.current) {
-        verifierRef.current = new EmbeddingSpeakerVerifier({
-          embedAudio: createWorkerEmbedAudio(),
-          storage: createCurrentSpeakerEmbeddingStorage(),
-          threshold: params.speakerThreshold,
-        })
-      }
-      const embedding = await verifierRef.current.loadEmbedding()
-      embeddingRef.current = embedding
-      if (!embedding) throw new Error('VOICEPRINT_REQUIRED')
-      setMode('auto')
-
-      if (paramsRef.current.persistSessionLifecycle) {
-        if (resuming) {
-          const resumed = await storageRef.current.resumeActiveSession()
-          if (!resumed) throw new Error('NO_SESSION_TO_RESUME')
-          setActiveSession(resumed)
-          setRecoveredUnexpectedPause(false)
-        } else {
-          const snapshot = paramsRef.current.sessionSnapshot
-          if (!snapshot) throw new Error('MISSING_SESSION_SNAPSHOT')
-          const startedAt = Date.now()
-          const id =
-            globalThis.crypto?.randomUUID?.()
-            ?? `${startedAt}-${Math.random().toString(36).slice(2)}`
-          pendingSessionStart = {
-            id,
-            startedAt,
-            snapshot,
-            title: localizedSessionTitle({ startedAt, snapshot }),
-          }
-        }
-      }
-
-      const p = paramsRef.current
-      if (pendingSessionStart) {
-        const created = await storageRef.current.startSession(pendingSessionStart)
-        setActiveSession(created)
-      }
-      const audioSourceMode = p.sessionSnapshot?.audioSource ?? 'microphone'
-
-      setLoading('正在启动麦克风…')
-      const primaryStream =
-        audioSourceMode === 'system'
-          ? await p.getSystemAudioStream?.()
-          : undefined
-      if (audioSourceMode === 'system' && !primaryStream) {
-        throw new Error('系统音频不可用')
-      }
-      const audio = new AudioSource({
-        deviceId: p.sessionSnapshot?.microphoneDeviceId,
-        stream: primaryStream,
-        echoCancellation: audioSourceMode !== 'system',
-        onDeviceEnded: () => {
-          void pauseRef.current('unexpected')
-        },
+      const verifier = new EmbeddingSpeakerVerifier({
+        embedAudio: createWorkerEmbedAudio(),
+        storage: p.speakerEmbeddingStorage ?? createCurrentSpeakerEmbeddingStorage(),
+        threshold: p.speakerThreshold,
       })
-      audioRef.current = audio
-      const vadVariant = SILERO_VARIANTS.find((v) => v.id === p.vadVariantId) ?? SILERO_VARIANTS[0]
-      const infer = await createSileroInfer(vadVariant, audio.sampleRate)
-      const vad = createVAD(infer, {
-        speechThreshold: p.speechThreshold,
-        exitThreshold: p.exitThreshold,
-        minSilenceDurationMs: p.minSilenceDurationMs,
-        minSpeechDurationMs: p.minSpeechDurationMs,
-        maxSpeechDurationMs: p.mergeMaxMs,
-        speechPadMs: 0,
-        sampleRate: audio.sampleRate,
+      const embedding = source === 'microphone' ? await verifier.loadEmbedding() : null
+      if (source === 'microphone' && !embedding && !p.allowUnenrolledMicrophone) throw new Error('VOICEPRINT_REQUIRED')
+      signal.throwIfAborted()
+      const engine = await createSpeechEngine(model, {
+        threshold: p.speechThreshold,
+        minSpeechMs: p.minSpeechDurationMs,
+        minSilenceMs: p.minSilenceDurationMs,
+        maxSpeechMs: p.mergeMaxMs,
+      }, source === 'both' ? 2 : 1, signal, (fraction) => {
+        if (!signal.aborted) setLoadingModel({ name: model.name, percent: Math.round(fraction * 100) })
       })
-      vadRef.current = vad
 
-      const llm = new ProxyLlmClient(
-        p.languageSnapshot,
-        () => paramsRef.current.replyEnabled,
+      const shouldGenerateReply = () => paramsRef.current.replyEnabled
+      const llm = createReplyClient(
+        languageSnapshot,
+        shouldGenerateReply,
+        p.replyStream ?? browserReplyModel.stream,
+        setError,
       )
-      llmRef.current = llm
-      const storage = storageRef.current
-      const pipeline = new Pipeline({ llm, conversation: storage })
-      pipelineRef.current = pipeline
-
-      setActiveSttPath('realtime')
-      setLoading('正在连接实时转写…')
-      const rt = await connectRealtimeSttWithRetry({
-        provider: selectedProvider,
-        language: p.languageSnapshot.conversationLang,
-        handlers: {
-          onPartial: (text) => {
-            const meta = draftMetaRef.current
-            if (!meta) return
-            setDraft({ speaker: meta.speaker, text, startedAt: meta.startedAt, endedAt: Date.now() })
-          },
-          onError: (message) => {
-            reportError(`实时转写：${message}`)
-          },
-        },
-      })
-      realtimeRef.current = rt
-      setStatusNote('实时转写已连接。')
-
-      const realtimeAggregator = createSegmentAggregator<TranscribedAudioSegment>({
-        sampleRate: audio.sampleRate,
-        pauseMs: p.pauseMs,
-        maxMs: p.mergeMaxMs,
-      })
-      realtimeAggregator.onFlush((merged) => {
-        const turn = finalizedTurnFromRealtimeSegments(
-          merged,
-          p.languageSnapshot.conversationLang,
-        )
-        if (!turn) return
-        pipelineBusyRef.current = pipelineBusyRef.current
-          .then(() => pipeline.ingestFinalizedTurn(turn))
-          .catch(() => {})
-      })
-      realtimeAggregatorRef.current = realtimeAggregator
-      attachAudioIoSpans(vad, realtimeAggregator, audio.sampleRate)
-
-      if (audioSourceMode === 'both') {
-        const systemStream = await p.getSystemAudioStream?.()
-        if (!systemStream) throw new Error('系统音频不可用')
-        const systemAudio = new AudioSource({
-          stream: systemStream,
-          echoCancellation: false,
-          onDeviceEnded: () => void pauseRef.current('unexpected'),
-        })
-        systemAudioRef.current = systemAudio
-        const systemInfer = await createSileroInfer(vadVariant, systemAudio.sampleRate)
-        const systemVad = createVAD(systemInfer, {
-          speechThreshold: p.speechThreshold,
-          exitThreshold: p.exitThreshold,
-          minSilenceDurationMs: p.minSilenceDurationMs,
-          minSpeechDurationMs: p.minSpeechDurationMs,
-          maxSpeechDurationMs: p.mergeMaxMs,
-          speechPadMs: 0,
-          sampleRate: systemAudio.sampleRate,
-        })
-        systemVadRef.current = systemVad
-        systemRealtimeRef.current = await connectRealtimeSttWithRetry({
-          provider: selectedProvider,
-          language: p.languageSnapshot.conversationLang,
-          handlers: {
-            onPartial: (text) => {
-              setDraft((current) =>
-                current?.speaker === 'user'
-                  ? current
-                  : {
-                      speaker: 'other',
-                      text,
-                      startedAt: current?.startedAt ?? Date.now(),
-                      endedAt: Date.now(),
-                    },
-              )
-            },
-            onError: (message) => reportError(`系统音频实时转写：${message}`),
-          },
-        })
-        const systemRealtimeAggregator = createSegmentAggregator<TranscribedAudioSegment>({
-          sampleRate: systemAudio.sampleRate,
-          pauseMs: p.pauseMs,
-          maxMs: p.mergeMaxMs,
-        })
-        systemRealtimeAggregator.onFlush((merged) => {
-          const turn = finalizedTurnFromRealtimeSegments(
-            merged,
-            p.languageSnapshot.conversationLang,
-          )
-          if (!turn) return
-          pipelineBusyRef.current = pipelineBusyRef.current
-            .then(() => pipeline.ingestFinalizedTurn(turn))
-            .catch(() => {})
-        })
-        systemRealtimeAggregatorRef.current = systemRealtimeAggregator
-        attachAudioIoSpans(systemVad, systemRealtimeAggregator, systemAudio.sampleRate)
-        systemVad.on('speech-start', () => {
-          systemInSpeechRef.current = true
-          systemRealtimeAggregatorRef.current?.hold()
-          setDraft({
-            speaker: 'other',
-            text: '',
-            startedAt: Date.now(),
-            endedAt: Date.now(),
-          })
-        })
-        systemVad.on('speech-end', () => {
-          systemInSpeechRef.current = false
-          systemRealtimeAggregatorRef.current?.resume()
-        })
-        systemVad.on('speech-ready', (event) => {
-          const endedAt = Date.now()
-          const realtime = systemRealtimeRef.current
-          if (!realtime || !systemUncommittedRef.current) return
-          systemUncommittedRef.current = false
-          realtime.commit()
-          const startedAt = endedAt - event.duration * 1000
-          const completed = realtime.waitCompleted()
-          realtimeBusyRef.current = realtimeBusyRef.current
-            .then(async () => {
-              try {
-                const text = await completed
-                setDraft((current) =>
-                  current?.startedAt === startedAt ? null : current,
-                )
-                systemRealtimeAggregatorRef.current?.feed({
-                  buffer: event.buffer,
-                  speaker: 'other',
-                  text,
-                  startedAt,
-                  endedAt,
-                })
-              } catch (cause) {
-                if (isTranscriptionFailed(cause)) {
-                  systemRealtimeAggregatorRef.current?.feed({
-                    buffer: event.buffer,
-                    speaker: 'other',
-                    text: '',
-                    sttFailed: true,
-                    startedAt,
-                    endedAt,
-                  })
-                  return
-                }
-                reportError(`系统音频实时转写：${String(cause)}`)
-              }
-            })
-            .catch(() => {})
-        })
-        await systemAudio.start(async (chunk) => {
-          await systemVad.processAudio(chunk)
-          if (systemInSpeechRef.current && systemRealtimeRef.current) {
-            systemUncommittedRef.current = true
-            systemRealtimeRef.current.append(chunk)
-          }
-        })
-      }
-
-      pipeline.on((e: PipelineEvent) => {
-        switch (e.type) {
+      const pipeline = new Pipeline({ llm, conversation: storage, shouldGenerateReply, trace: p.trace })
+      pipeline.on((event: PipelineEvent) => {
+        switch (event.type) {
           case 'state':
-            setState(e.state)
+            setState(event.state)
             break
           case 'turnAppended':
-            setTurns((prev) => [...prev, e.turn as SessionTurn])
+            setTurns((previous) => [...previous, event.turn])
             break
-          case 'candidatesDone':
-            if (!paramsRef.current.replyEnabled) break
-            if (e.candidates.length === 3) {
-              setCandidateRounds((prev) => [{ id: e.turnId, candidates: e.candidates }, ...prev])
-            }
-            setTurns((prev) => prev.map((t) => (t.id === e.turnId ? { ...t, candidates: e.candidates } : t)))
-            void storageRef.current.updateTurnSuggestions(e.turnId, e.candidates)
-            break
-          case 'candidatesStreaming':
-          case 'candidateDelta':
-          case 'llmAborted':
-          case 'llmFailed':
-            break
-          case 'sttFailed':
-            setTurns((prev) => prev.map((t) => (t.id === e.turnId ? { ...t, sttFailed: true } as SessionTurn : t)))
-            break
-          default: {
-            const _exhaustive: never = e
-            void _exhaustive
+          case 'candidatesDone': {
+            if (!paramsRef.current.replyEnabled || event.candidates.length !== 3) break
+            setError('')
+            setCandidateRounds((previous) => [{ id: event.turnId, candidates: event.candidates }, ...previous])
+            setTurns((previous) => previous.map((turn) =>
+              turn.id === event.turnId ? { ...turn, candidates: event.candidates } : turn))
+            void storage.updateTurnSuggestions(event.turnId, event.candidates)
+              .catch((cause) => setError(String(cause)))
             break
           }
         }
       })
 
-      vad.on('speech-start', () => {
-        setVadStatus('speech')
-        if (!paramsRef.current.sttEnabled) {
-          inSpeechRef.current = true
-          return
-        }
-        const startedAt = Date.now()
-        realtimeAggregatorRef.current?.hold()
-        const who = draftMetaRef.current?.speaker ?? stableSpeakerRef.current
-        draftMetaRef.current = { speaker: who, startedAt }
-        setDraft({ speaker: who, text: '', startedAt, endedAt: startedAt })
-        inSpeechRef.current = true
-      })
-      vad.on('speech-end', () => {
-        setVadStatus('silence')
-        inSpeechRef.current = false
-        realtimeAggregatorRef.current?.resume()
-      })
-      vad.on('speech-ready', (e) => {
-        if (!paramsRef.current.sttEnabled) return
-        const now = Date.now()
-        const startedAt = draftMetaRef.current?.startedAt ?? now - e.duration * 1000
-        const endedAt = now
-
-        const rt = realtimeRef.current
-        if (!rt || !uncommittedRef.current) return
-
-        rt.commit()
-        uncommittedRef.current = false
-        const buffer = e.buffer
-        const provisional = draftMetaRef.current?.speaker ?? stableSpeakerRef.current
-        const transcription = rt.waitCompleted().then(
-          (text) => ({ ok: true as const, text }),
-          (error: unknown) => ({ ok: false as const, error }),
-        )
-        const verifiedSpeaker = verifySpeaker(buffer.buffer as ArrayBuffer)
-        realtimeBusyRef.current = realtimeBusyRef.current
-          .then(async () => {
-            const [outcome, who] = await Promise.all([
-              transcription,
-              verifiedSpeaker,
-            ])
-            if (outcome.ok) {
-              draftMetaRef.current = { speaker: who, startedAt }
-              setDraft((current) =>
-                current?.startedAt === startedAt ? null : current,
-              )
-              realtimeAggregatorRef.current?.feed({
-                buffer,
-                speaker: who,
-                text: outcome.text,
-                startedAt,
-                endedAt,
-              })
-              return
-            }
-            if (isTranscriptionFailed(outcome.error)) {
-              setDraft((current) =>
-                current?.startedAt === startedAt ? null : current,
-              )
-              realtimeAggregatorRef.current?.feed({
-                buffer,
-                speaker: provisional,
-                text: '',
-                sttFailed: true,
-                startedAt,
-                endedAt,
-              })
-              return
-            }
-            reportError(`实时转写：${String(outcome.error)}`)
-            realtimeAggregatorRef.current?.feed({
-              buffer,
-              speaker: who,
-              text: '',
-              sttFailed: true,
-              startedAt,
-              endedAt,
-            })
+      let stableSpeaker: 'user' | 'other' = 'other'
+      capture = createSessionCapture({
+        engine,
+        source,
+        language: languageSnapshot.conversationLang,
+        microphoneDeviceId: snapshot?.microphoneDeviceId,
+        getSystemAudioStream: p.getSystemAudioStream,
+        stopSystemAudioStream: p.stopSystemAudioStream,
+        signal,
+        pauseMs: p.pauseMs,
+        maxMs: p.mergeMaxMs,
+        transcriptionEnabled: () => paramsRef.current.sttEnabled,
+        async verifySpeaker(pcm) {
+          // Short VAD fragments lack enough speech for CAM++ to score reliably.
+          if (!embedding || pcm.length < 16000) return stableSpeaker
+          const verification = p.trace && beginSpan(p.trace, {
+            track: trackPath(VoiceTracks.Speech, { actor: stableSpeaker }),
+            name: 'speaker.verify',
           })
-          .catch(() => {})
+          try {
+            const threshold = paramsRef.current.speakerThreshold
+            verifier.setThreshold(threshold)
+            const result = await verifier.verify(pcm.buffer as ArrayBuffer, embedding)
+            verification?.end({ attrs: { [VoiceAttributes.SpeakerScore]: result.similarity } })
+            setConfidence(result.confidence)
+            stableSpeaker = stabilizeSpeaker(result.similarity, stableSpeaker, threshold)
+          } catch (cause) {
+            verification?.end({ status: 'error' })
+            setError(String(cause))
+          }
+          return stableSpeaker
+        },
+        onTurn(turn) {
+          pipelineWorkRef.current = pipelineWorkRef.current
+            .then(() => pipeline.ingestFinalizedTurn(turn))
+            .catch((cause) => setError(String(cause)))
+        },
+        onDraft: setDraft,
+        onAudioFrame: p.onAudioFrame,
+        onSpeech: (speaking) => setVadStatus(speaking ? 'speech' : 'silence'),
+        onDeviceEnded: () => { void pauseRef.current('unexpected') },
+        onError: setError,
+        trace: p.trace,
       })
-
-      await audio.start(async (chunk) => {
-        await vad.processAudio(chunk)
-        if (!paramsRef.current.sttEnabled) return
-        if (!inSpeechRef.current) return
-        const rtConn = realtimeRef.current
-        if (!rtConn) return
-        uncommittedRef.current = true
-        rtConn.append(chunk)
-      })
+      captureRef.current = capture
+      pipelineRef.current = pipeline
+      signal.throwIfAborted()
+      if (p.persistSessionLifecycle) {
+        if (!snapshot) throw new Error('MISSING_SESSION_SNAPSHOT')
+        const startedAt = Date.now()
+        const session = options.resume
+          ? await storage.resumeActiveSession()
+          : await storage.startSession({
+              id: crypto.randomUUID(),
+              startedAt,
+              snapshot,
+              title: localizedSessionTitle({ startedAt, snapshot }),
+            })
+        if (!session) throw new Error('NO_SESSION_TO_RESUME')
+        startedPersistedSession = true
+        setActiveSession(session)
+      }
+      signal.throwIfAborted()
+      if (!options.resume) {
+        setTurns([])
+        setCandidateRounds([])
+      }
+      await capture.start()
+      signal.throwIfAborted()
+      setRecoveredUnexpectedPause(false)
+      setMode('auto')
+      setActiveSttPath('realtime')
       setRunning(true)
       setLifecycle('running')
-      setLoading('')
-    } catch (e) {
-      const message = (e as Error).message
-      reportError(message)
-      setLoading('')
-      releaseCapture()
-      await realtimeBusyRef.current.catch(() => {})
-      flushRealtimeAggregators()
-      if (paramsRef.current.persistSessionLifecycle) {
-        // Abort the half-started session so the real error is visible
-        // (session errors are hidden while lifecycle === 'paused').
-        const stopped = await storageRef.current.stopActiveSession()
-        setActiveSession(stopped)
-        setRecoveredUnexpectedPause(false)
-        setLifecycle('stopped')
-      } else {
-        setLifecycle('stopped')
+    } catch (cause) {
+      if (!signal.aborted) setError(cause instanceof Error ? cause.message : String(cause))
+      if (capture) await capture.stop(false).catch(() => {})
+      else if (source !== 'microphone') await p.stopSystemAudioStream?.().catch(() => {})
+      captureRef.current = null
+      pipelineRef.current = null
+      if (startedPersistedSession) {
+        const session = options.resume
+          ? await storage.pauseActiveSession('unexpected')
+          : await storage.stopActiveSession()
+        setActiveSession(session)
       }
+      setLifecycle(options.resume ? 'paused' : 'stopped')
     } finally {
-      startInFlightRef.current = false
+      startingRef.current = null
+      setLoadingModel(null)
     }
   }
 
-  function releaseCapture() {
-    systemRealtimeAggregatorRef.current?.flush()
-    systemRealtimeAggregatorRef.current?.dispose()
-    systemRealtimeAggregatorRef.current = null
-    systemAudioRef.current?.stop()
-    systemAudioRef.current = null
-    systemVadRef.current = null
-    systemRealtimeRef.current?.finish()
-    systemRealtimeRef.current?.close()
-    systemRealtimeRef.current = null
-    systemInSpeechRef.current = false
-    systemUncommittedRef.current = false
-    void paramsRef.current.stopSystemAudioStream?.()
-    realtimeAggregatorRef.current?.flush()
-    realtimeAggregatorRef.current?.dispose()
-    realtimeAggregatorRef.current = null
-    realtimeRef.current?.finish()
-    realtimeRef.current?.close()
-    realtimeRef.current = null
-    uncommittedRef.current = false
-    inSpeechRef.current = false
-    audioRef.current?.stop()
-    audioRef.current = null
-    if (pipelineRef.current) settlingPipelineRef.current = pipelineRef.current
-    pipelineRef.current = null
-    llmRef.current = null
-    vadRef.current = null
-    draftMetaRef.current = null
-    setDraft(null)
-    setRunning(false)
-    setActiveSttPath('idle')
-    setVadStatus('idle')
-    setConfidence(null)
-  }
-
-  function flushRealtimeAggregators() {
-    systemRealtimeAggregatorRef.current?.flush()
-    systemRealtimeAggregatorRef.current?.dispose()
-    systemRealtimeAggregatorRef.current = null
-    realtimeAggregatorRef.current?.flush()
-    realtimeAggregatorRef.current?.dispose()
-    realtimeAggregatorRef.current = null
-  }
-
-  function sealPendingRealtimeDraft() {
-    const pending = draftRef.current
+  async function finishCapture(): Promise<void> {
+    if (teardownRef.current) return teardownRef.current
+    const capture = captureRef.current
     const pipeline = pipelineRef.current
-    if (!uncommittedRef.current || !pending?.text.trim() || !pipeline) return
-
-    uncommittedRef.current = false
-    draftMetaRef.current = null
-    draftRef.current = null
-    setDraft(null)
-    pipelineBusyRef.current = pipelineBusyRef.current
-      .then(() =>
-        pipeline.ingestFinalizedTurn({
-          speaker: pending.speaker,
-          text: pending.text.trim(),
-          startedAt: pending.startedAt,
-          endedAt: Date.now(),
-        }),
-      )
-      .catch(() => {})
+    const teardown = (async () => {
+      try {
+        await capture?.stop(true)
+        await pipelineWorkRef.current
+        await pipeline?.idle()
+      } finally {
+        captureRef.current = null
+        pipelineRef.current = null
+        setDraft(null)
+        setRunning(false)
+        setActiveSttPath('idle')
+        setVadStatus('idle')
+        setConfidence(null)
+      }
+    })()
+    teardownRef.current = teardown
+    try {
+      await teardown
+    } finally {
+      teardownRef.current = null
+    }
   }
 
   async function pause(reason: 'user' | 'unexpected' = 'user') {
-    if (!running && lifecycle !== 'starting') return
-    sealPendingRealtimeDraft()
-    releaseCapture()
-    await realtimeBusyRef.current.catch(() => {})
-    flushRealtimeAggregators()
-    await pipelineBusyRef.current.catch(() => {})
+    if (startingRef.current) {
+      startingRef.current.abort()
+      return
+    }
+    if (!captureRef.current || teardownRef.current) return
+    await finishCapture()
     if (paramsRef.current.persistSessionLifecycle) {
-      const paused = await storageRef.current.pauseActiveSession(reason)
-      setActiveSession(paused)
+      setActiveSession(await storage.pauseActiveSession(reason))
     }
     setRecoveredUnexpectedPause(reason === 'unexpected')
     setLifecycle('paused')
   }
 
   async function resume() {
-    if (lifecycle !== 'paused') return
-    await realtimeBusyRef.current.catch(() => {})
-    await pipelineBusyRef.current.catch(() => {})
-    await settlingPipelineRef.current?.idle().catch(() => {})
-    settlingPipelineRef.current = null
-    await start({ resume: true })
+    if (lifecycle === 'paused') await start({ resume: true })
   }
 
   async function stop() {
-    const pipeline = pipelineRef.current ?? settlingPipelineRef.current
-    sealPendingRealtimeDraft()
-    releaseCapture()
-    await realtimeBusyRef.current.catch(() => {})
-    flushRealtimeAggregators()
-    await pipelineBusyRef.current.catch(() => {})
-    await pipeline?.idle().catch(() => {})
-    settlingPipelineRef.current = null
+    if (startingRef.current) {
+      startingRef.current.abort()
+      return
+    }
+    await finishCapture()
     if (paramsRef.current.persistSessionLifecycle) {
-      const stopped = await storageRef.current.stopActiveSession()
-      setActiveSession(stopped)
+      setActiveSession(await storage.stopActiveSession())
     }
     setRecoveredUnexpectedPause(false)
     setLifecycle('stopped')
   }
 
   async function interrupt() {
-    if (lifecycle === 'running' || lifecycle === 'starting') {
-      await pause('unexpected')
-    }
+    await pause('unexpected')
   }
 
   async function clearSession() {
-    await storageRef.current.clearActiveSession()
+    await storage.clearActiveSession()
     setTurns([])
     setDraft(null)
     setCandidateRounds([])
@@ -751,11 +376,16 @@ export function useConversationSession(params: ConversationSessionParams) {
     setLifecycle('stopped')
   }
 
+  const modelDownloadPercent = loadingModel?.percent
+  const loading = loadingModel
+    ? modelDownloadPercent === undefined ? loadingModel.name : `${loadingModel.name} · ${modelDownloadPercent}%`
+    : ''
+
   return {
     running,
     loading,
+    modelDownloadPercent,
     error,
-    statusNote,
     state,
     turns,
     draft,

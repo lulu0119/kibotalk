@@ -19,11 +19,11 @@ jobs:
           version: 10.33.0
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 26
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm --filter @kibotalk/web build
-      - run: pnpm --filter @kibotalk/api build
+      - run: pnpm --filter @kibotalk/playground build
 

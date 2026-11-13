@@ -114,7 +114,6 @@ export function createFakeSessionController(options: {
     vadStatus: options.vadStatus ?? 'idle',
     loading: options.loading ?? '',
     error: options.error ?? '',
-    statusNote: '',
     turns,
     draft: null,
     activeSession: lifecycle === 'stopped' ? null : fakeActiveSession,

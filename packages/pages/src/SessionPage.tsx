@@ -24,15 +24,15 @@ import {
   Switch,
 } from '@kibotalk/ui'
 import {
-  Ellipsis,
-  History,
-  PanelLeft,
-  Pause,
-  Play,
-  Settings,
-  Sparkles,
-  Square,
-} from 'lucide-react'
+  HistoryIcon,
+  MenuDotsIcon,
+  PanelLeftIcon,
+  PauseIcon,
+  PlayIcon,
+  SettingsIcon,
+  SparklesIcon,
+  StopIcon,
+} from '@kibotalk/ui/icons'
 
 export type SessionPageProps = {
   controller: ProductSessionController
@@ -87,7 +87,7 @@ function TurnBubble({ turn }: { turn: SessionTurn }) {
 
 function statusLabel(controller: ProductSessionController, translate: ReturnType<typeof useI18n>['t']) {
   const { lifecycle, loading } = controller.session
-  if (loading) return translate('preparingMicrophone')
+  if (loading) return loading
   if (lifecycle === 'paused') return translate('paused')
   if (lifecycle === 'stopped') return translate('stopped')
   if (lifecycle === 'restoring' || lifecycle === 'starting') return translate('preparing')
@@ -111,10 +111,20 @@ export function SessionPage({ controller, onGoSettings, onGoHistory }: SessionPa
   const latestTurn = session.turns.at(-1)
   const currentTranscript = session.draft ?? latestTurn
   let sessionError = ''
-  if (session.error === 'LOCAL_STT_UNAVAILABLE') {
-    sessionError = t('localSttUnavailable')
-  } else if (shouldShowSessionError(session.lifecycle, session.error)) {
-    sessionError = session.error === 'VOICEPRINT_REQUIRED' ? t('voiceprintRequired') : session.error
+  if (shouldShowSessionError(session.lifecycle, session.error)) {
+    switch (session.error) {
+      case 'VOICEPRINT_REQUIRED':
+        sessionError = t('voiceprintRequired')
+        break
+      case 'LLM_SETTINGS_REQUIRED':
+        sessionError = t('replyModelRequired')
+        break
+      case 'LLM_BROWSER_CONNECTION':
+        sessionError = t('replyModelBrowserError')
+        break
+      default:
+        sessionError = session.error
+    }
   }
   const transcriptItems = useMemo(() => session.turns, [session.turns])
   const status = statusLabel(controller, t)
@@ -146,7 +156,7 @@ export function SessionPage({ controller, onGoSettings, onGoHistory }: SessionPa
 
         <div className="flex items-center gap-1.5 sm:gap-2">
           <label className="hidden items-center gap-2 rounded-full bg-foreground/5 px-3 py-2 text-xs font-semibold md:flex">
-            <Sparkles className="size-3.5" />
+            <SparklesIcon className="size-3.5" />
             {t('aiSuggestions')}
             <Switch
               checked={replyEnabled}
@@ -162,22 +172,22 @@ export function SessionPage({ controller, onGoSettings, onGoHistory }: SessionPa
               onClick={() => void session.pause()}
               aria-label={t('pause')}
             >
-              <Pause className="size-4" />
+              <PauseIcon className="size-4" />
             </Button>
           ) : session.lifecycle === 'paused' ? (
             <Button variant="soft" size="icon" onClick={() => void session.resume()} aria-label={t('resume')}>
-              <Play className="size-4" />
+              <PlayIcon className="size-4" />
             </Button>
           ) : null}
 
           {active ? (
             <Button size="sm" onClick={() => setStopDialogOpen(true)}>
-              <Square className="size-3.5" />
+              <StopIcon className="size-3.5" />
               <span className="hidden sm:inline">{t('stop')}</span>
             </Button>
           ) : session.lifecycle === 'stopped' ? (
             <Button size="sm" onClick={controller.requestSessionStart}>
-              <Play className="size-3.5" />
+              <PlayIcon className="size-3.5" />
               <span className="hidden sm:inline">{t('start')}</span>
             </Button>
           ) : null}
@@ -185,23 +195,23 @@ export function SessionPage({ controller, onGoSettings, onGoHistory }: SessionPa
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="soft" size="icon" aria-label={t('more')}>
-                <Ellipsis className="size-4" />
+                <MenuDotsIcon className="size-4" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onSelect={() => setReplyEnabled((enabled) => !enabled)} className="md:hidden">
-                <Sparkles className="size-4" />
+                <SparklesIcon className="size-4" />
                 {t('aiSuggestions')}
               </DropdownMenuItem>
               {onGoHistory ? (
                 <DropdownMenuItem onSelect={onGoHistory}>
-                  <History className="size-4" />
+                  <HistoryIcon className="size-4" />
                   {t('history')}
                 </DropdownMenuItem>
               ) : null}
               {onGoSettings ? (
                 <DropdownMenuItem onSelect={onGoSettings}>
-                  <Settings className="size-4" />
+                  <SettingsIcon className="size-4" />
                   {t('settings')}
                 </DropdownMenuItem>
               ) : null}
@@ -253,7 +263,7 @@ export function SessionPage({ controller, onGoSettings, onGoHistory }: SessionPa
                 aria-expanded
                 onClick={() => setTranscriptOpen(false)}
               >
-                <PanelLeft className="size-4" />
+                <PanelLeftIcon className="size-4" />
                 {t('conversationHistory')}
               </Button>
             </div>
@@ -294,7 +304,7 @@ export function SessionPage({ controller, onGoSettings, onGoHistory }: SessionPa
               aria-expanded={transcriptOpen}
               onClick={() => setTranscriptOpen((open) => !open)}
             >
-              <PanelLeft className="size-4" />
+              <PanelLeftIcon className="size-4" />
               {t('conversationHistory')}
             </Button>
           </div>

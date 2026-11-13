@@ -12,6 +12,7 @@ const config: StorybookConfig = {
   viteFinal: async (config) =>
     mergeConfig(config, {
       plugins: [tailwindcss()],
+      worker: { format: 'es' },
     }),
 }
 

@@ -9,12 +9,12 @@
  */
 
 :root {
-  --background: #fafafa;
-  --foreground: #2b2620;
-  --card: #fffefb;
-  --card-foreground: #2b2620;
-  --popover: #fffefb;
-  --popover-foreground: #2b2620;
+  --background: var(--color-stone-50);
+  --foreground: var(--color-stone-900);
+  --card: var(--color-white);
+  --card-foreground: var(--color-stone-900);
+  --popover: var(--color-white);
+  --popover-foreground: var(--color-stone-900);
 
   /* Primary = the yellow brand color (Tailwind `yellow` scale, yellow-400
      ≈ #ffc900). Ink-on-yellow text is yellow-900, not a separate token. */
@@ -23,68 +23,63 @@
   /* Hover state for soft/ghost yellow surfaces (chip, pill-tag, icon-btn). */
   --primary-soft-strong: var(--color-yellow-200);
 
-  --secondary: #f1efe6;
-  --secondary-foreground: #3a342c;
-  --muted: #f2f0e8;
-  --muted-foreground: #7d7669;
+  --secondary: var(--color-stone-100);
+  --secondary-foreground: var(--color-stone-900);
+  --muted: var(--color-stone-100);
+  --muted-foreground: var(--color-stone-600);
   /* Soft yellow tint — chip / pill-tag / icon-btn resting surface.
      Foreground is orange (not muddy yellow-700/800) so accent text stays
      on the Tailwind orange scale. */
   --accent: var(--color-yellow-100);
-  --accent-foreground: var(--color-orange-600);
-  --destructive: #dc2626;
-  --destructive-foreground: #fafafa;
-  --border: #e7e2d5;
-  --input: #e7e2d5;
+  --accent-foreground: var(--color-orange-800);
+  --destructive: var(--color-red-700);
+  --destructive-foreground: var(--color-white);
+  --border: var(--color-stone-200);
+  --input: var(--color-stone-300);
   --ring: var(--color-yellow-500);
 
-  /* One base radius; sm/md/lg/xl derive from it (shadcn calc convention),
-     landing on the prototype's 10/15/22px scale. Buttons/pills use
-     `rounded-full` directly, not this scale. */
-  --radius: 0.9375rem;
-
   /* Desk under the sticky stack (playground floating-sim + Island dock). */
-  --desk: #ececdf;
+  --desk: var(--color-stone-200);
 
   /* Post-it ink — fixed warm brown in both themes (bright paper, dark ink,
      never inverted into a muddy gold). */
-  --sticky-foreground: #3a2c05;
+  --sticky-foreground: var(--color-yellow-950);
 
   /* Desktop Island — dark glass bar, independent of light/dark page theme. */
-  --island: #1e1b16;
-  --island-foreground: #eee;
+  --island: var(--color-stone-900);
+  --island-foreground: var(--color-stone-100);
 
   --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .dark {
-  --background: #17140f;
-  --foreground: #f1ece0;
-  --card: #1e1a14;
-  --card-foreground: #f1ece0;
-  --popover: #1e1a14;
-  --popover-foreground: #f1ece0;
+  --background: var(--color-stone-950);
+  --foreground: var(--color-stone-100);
+  --card: var(--color-stone-900);
+  --card-foreground: var(--color-stone-100);
+  --popover: var(--color-stone-900);
+  --popover-foreground: var(--color-stone-100);
 
   --primary: var(--color-yellow-400);
   --primary-foreground: var(--color-yellow-900);
   --primary-soft-strong: var(--color-yellow-200);
 
-  --secondary: #29241c;
-  --secondary-foreground: #f1ece0;
-  --muted: #241f18;
-  --muted-foreground: #a89e8c;
-  --accent: #33291a;
+  --secondary: var(--color-stone-800);
+  --secondary-foreground: var(--color-stone-100);
+  --muted: var(--color-stone-800);
+  --muted-foreground: var(--color-stone-400);
+  --accent: var(--color-yellow-950);
   --accent-foreground: var(--color-orange-300);
-  --destructive: #dc2626;
-  --destructive-foreground: #fafafa;
-  --border: #332c22;
-  --input: #332c22;
+  --destructive: var(--color-red-700);
+  --destructive-foreground: var(--color-white);
+  --border: var(--color-stone-800);
+  --input: var(--color-stone-700);
   --ring: var(--color-yellow-500);
 
-  --desk: #1c1811;
-  --sticky-foreground: #3a2c05;
-  --island: #1e1b16;
-  --island-foreground: #eee;
+  --desk: var(--color-stone-950);
+  --sticky-foreground: var(--color-yellow-950);
+  --island: var(--color-stone-900);
+  --island-foreground: var(--color-stone-100);
 
   --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
 }
@@ -115,22 +110,9 @@
   --color-island: var(--island);
   --color-island-foreground: var(--island-foreground);
 
-  --radius-sm: calc(var(--radius) - 5px);
-  --radius-md: var(--radius);
-  --radius-lg: calc(var(--radius) + 7px);
-  --radius-xl: calc(var(--radius) + 11px);
-
-  /* Shared elevation grammar for every "selectable token" (chip / seg /
-     switch / icon-btn / pill-tag / btn) — tier 0 = resting, tier 1 = active
-     or primary. Both are flat: color/contrast carries the state, not
-     embossed thickness. Nothing outside these should invent a third tier. */
-  --shadow-tier0: inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 1px 2px rgba(161, 98, 7, 0.1);
-  --shadow-tier1: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 1px 3px rgba(161, 98, 7, 0.2);
-  --shadow-tier1-lg: inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 2px 8px rgba(161, 98, 7, 0.24);
-  --shadow-panel: inset 0 1px 0 rgba(255, 255, 255, 0.7), 0 1px 2px rgba(43, 38, 32, 0.06),
-    0 16px 32px rgba(43, 38, 32, 0.09);
-  --shadow-note: inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 1px 2px rgba(0, 0, 0, 0.08),
-    0 16px 30px rgba(120, 90, 0, 0.26);
+  --shadow-tier0: var(--shadow-xs);
+  --shadow-tier1: var(--shadow-sm);
+  --shadow-note: var(--shadow-md);
 
   /* The one "filled active" surface — big and small controls share it, no
      extra gradient stop for "important" buttons. */
@@ -164,7 +146,7 @@
     background: var(--card);
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-panel);
+    @apply shadow-xs;
   }
 
   .desk-surface {
@@ -178,25 +160,35 @@
     background: var(--card);
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-panel);
+    @apply shadow-xs;
   }
 
-  /* No permanent drop shadow — this sits directly on the transparent desktop,
-     not an opaque page, so a blurred shadow would just read as a stray dark
-     halo around the bar. Border stays near-invisible at rest, brightens on
-     hover as the only "you can interact with this" cue (AIRI's idle-island
-     buttons have no shadow either — see docs/spec/product-design-system.md). */
   .island-bar {
-    color: var(--island-foreground);
-    background: color-mix(in srgb, var(--island) 82%, transparent);
-    border: 1px solid rgb(255 255 255 / 0.06);
-    border-radius: var(--radius-lg);
-    backdrop-filter: blur(16px);
-    transition: border-color 150ms var(--ease-out-soft);
+    @apply rounded-full border border-white/10 bg-island text-stone-200 shadow-sm;
   }
 
-  .island-bar:hover {
-    border-color: rgb(255 255 255 / 0.2);
+  .island-bar,
+  .island-menu {
+    --solar-color: var(--color-stone-300);
+    --solar-secondary-color: var(--color-stone-400);
+    --solar-secondary-opacity: 0.9;
+    --solar-size: calc(var(--spacing) * 4.5);
+  }
+
+  .island-action {
+    @apply flex size-9 shrink-0 items-center justify-center rounded-full transition-colors
+      focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary-soft-strong
+      disabled:opacity-40 [-webkit-app-region:no-drag];
+  }
+
+  .island-action:enabled:hover,
+  .island-action[aria-expanded="true"] {
+    @apply bg-white/10;
+  }
+
+  .island-action[aria-pressed="true"] {
+    --solar-color: var(--primary-soft-strong);
+    --solar-secondary-color: var(--color-stone-200);
   }
 
   /* Scopes the Island's sticky notes to the same "no permanent shadow"

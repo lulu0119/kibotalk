@@ -28,51 +28,51 @@ update the spec — don't silently drift.
 
 ## Architecture
 
-Client orchestration with a local Hono proxy. Run `apps/api` on loopback
-using the credentials in the root `.env`. Web, macOS, and Playground use the
-same local proxy. Session history and voiceprints stay in IndexedDB on the
-device. See [local setup](README.md#run-locally) for the supported entry points.
+Web calls the user's configured reply endpoint from the browser. macOS calls it in
+the Electron main process and stores its key with `safeStorage`. History,
+voiceprints, and speech model assets stay on the device. See [local setup](README.md#run-locally).
 
-Realtime STT supports iFlytek via a signed URL and DashScope via
-`WS /api/stt-realtime`. Local VAD and speaker verification own turn boundaries.
-The timeline may show partial drafts. Formal turns and LLM requests use
-finalized transcripts.
+The clients share `useConversationSession` and `createSessionCapture`.
+The speech Worker runs Sherpaw VAD and streaming ASR on 16 kHz mono PCM in
+512-sample frames. Desktop dual capture has independent VAD and ASR streams
+for microphone and system audio. TurnGate merges finalized segments before
+the reply pipeline runs. Only finalized transcripts go into history and prompts.
 
 ## Tech stack — do not bypass these
 
 These are spec-named choices. **Do not rewrite or substitute them** with hand-rolled equivalents:
 
-- **LLM → `xsai`** (`@xsai/stream-text`). Never hand-roll fetch/SSE for LLM. An official `xsai` skill is installed at `.agents/skills/xsai/` — read its `SKILL.md` + `references/` before touching `packages/llm`.
-- **Prompts → Velin** (`@velin-dev/core-react`). Render TSX components to markdown strings; don't template with raw string concat.
-- **STT** uses the `packages/stt` mappers for DashScope and a local proxy-issued URL for iFlytek. Keep provider secrets in the local proxy.
-- **VAD → Silero** via `@huggingface/transformers`. v6.2 needs a 64-sample context prepended to each 512-sample chunk (576 input), carried across calls; v5 takes 512 raw. See `apps/playground/src/audio/silero-vad.ts`.
-- **Speaker → `onnx-community/wespeaker-voxceleb-resnet34-LM` (Q8)** via transformers.js in a Web Worker; embeddings persist in IndexedDB.
+- **LLM → xsAI v1**. Use the pinned provider preview from xsAI PR #350 to resolve
+  model routes and xsAI's text adapters for streaming. Read the repo's xsAI skill in
+  `.agents/skills/xsai/` and verify v1 calls against the pinned types before editing `packages/llm`.
+- **Prompts → Velin** (`@velin-dev/core-react`). Render the existing TSX prompts.
+- **Speech → Sherpaw**. The model catalog pins Zipformer, X-ASR, and Paraformer.
+  Silero v5 detects speech boundaries and CAM++ supplies speaker embeddings.
+  Keep the version in the voiceprint storage namespace when changing models.
+- **Trace → AIRI**. Emit through `@proj-airi/trace-kit`. Playground mounts the
+  published `ui-trace` and `ui-timeline` components in its trace dialog.
 - **Python deps → `uv`**: repo-local `.venv` (gitignored); install with `uv pip install -r <path>/requirements.txt`, never bare `pip`. Keep helper scripts in the repo so GitHub workflows can run them; invoke with `.venv/bin/python`.
-
-## Audio pipeline specifics
-
-- **Sample rate**: 16 kHz mono PCM everywhere (VAD, realtime STT uplink, speaker embeddings).
-- **VAD chunk size**: 512 samples (32 ms) per `processAudio` call (`packages/audio/src/vad.ts` `newBufferSize`). Silero v6.2 prepends 64-sample context → 576 input; v5 takes 512 raw. See `docs/solutions/silero-vad-v6-context-frame.md`.
-- **Speaker embeddings**: computed in a Web Worker (`apps/playground/src/audio/speaker-worker.ts`), persisted in IndexedDB. Don't run the WASM model on the main thread.
-- **Segment aggregation / TurnGate** (`packages/audio/src/aggregator.ts`): sits between VAD (+ speaker verification) and realtime `append`/`commit` → `ingestFinalizedTurn`. Merges same-speaker fragment transcripts and flushes on `pauseMs`, `maxMs` (speech only), or speaker change. Spec §2.4 / ADR 0004. Pipeline fires LLM per finalized turn and does NOT wait on pause itself.
 
 ## Conventions
 
-- **Keys in env, never client.** All provider keys/config live in `.env` (see `.env.example`), loaded by `apps/api`. Naming: `<SCOPE>_<PROVIDER>_<FIELD>` (e.g. `LLM_OPENROUTER_API_KEY`, `STT_DASHSCOPE_API_KEY`).
+- Persist reply-model settings per device. Browser keys stay in browser storage.
+  Desktop keys are encrypted at rest. Keep credentials out of traces and logs.
 - **Pure functions; no new classes** unless the framework/API requires it. Imports at top. TS unions: exhaustive `switch`.
 - **Full words.** No obscure abbreviations; only use ones common in software.
 - **Smallest correct diff.** Only change what was asked. No drive-by refactor, tests, or docs unless asked. When you touch code, small progressive refactors alongside the change are welcome.
-- **Reuse and extend** existing functions/modules; do not duplicate similar logic. Before implementing a feature (a selector, a hook, a helper, a card), grep the repo for it first — chances are someone already wrote it. The moment you notice a second copy of something, extract it into a shared module/component and have both callers use it. Examples already in the repo: `SttProviderSelect` + `useSttProviders` + `sttUrl` (`apps/playground/src/SttProviderSelect.tsx`, used by both the VAD panel and the direct-API panel), `padBuffer` / `encodeWav` (`packages/audio`), `createSegmentAggregator` (`packages/audio/aggregator`).
+- **Reuse and extend** existing functions/modules; do not duplicate similar logic. Before implementing a feature (a selector, a hook, a helper, a card), grep the repo for it first — chances are someone already wrote it. The moment you notice a second copy of something, extract it into a shared module/component and have both callers use it.
 - **No backward-compatibility guards.** If a rename/breakage is needed, do it directly and update callers in the same change.
 - **Playground UI is Chinese** — labels, examples, and sample content in Chinese.
 - **Tailwind v4 + shadcn/ui** for all UI (playground included). Shared primitives in `packages/ui`（Button、Card、Badge、Input、Textarea、Label、Tabs、Separator、Accordion、Collapsible、Dialog、DropdownMenu、Popover、Progress、ScrollArea、Select、Sheet、Skeleton、Slider、Switch、Tooltip、Toaster）。缺组件先 `shadcn add` 进该包并导出；**改样式改源组件 / token，不要平行重造**。
-- **Shared playground config lives in one Zustand store** (`apps/playground/src/config-store.ts`, `useConfig`) — the React analog of a Pinia store. VAD/merge/speaker knobs, language prefs (`uiLang` / `conversationLang` / `level` / `languagesConfirmed`, persisted; `meaningLang` is derived from `uiLang` in the session snapshot), and selectors (VAD model, STT provider) are shared across the VAD panel and the live session: change one on a tab and it's already aligned on the other. Subscribe per-field (`useConfig(s => s.field)`); in async callbacks read `useConfig.getState()`. Stage-grouped field components live in `apps/playground/src/components/ConfigFields.tsx` (`VadParamsFields`, `MergeParamsFields`, `LanguagePrefsFields`, `VadModelSelect`, `NumberField`) — reuse these instead of re-declaring the same knobs. STT provider switching in playground uses `SttProviderSelect`.
+- **Shared playground config** lives in `apps/playground/src/config-store.ts`.
+  Reuse the fields in `components/ConfigFields.tsx` and the product model settings
+  in `packages/pages`.
+
 
 ## Commands
 
 ```bash
 pnpm install
-pnpm dev:api          # Hono proxy (loads .env from repo root)
 pnpm dev:playground   # Vite dev panel
 pnpm dev:web          # PWA shell
 pnpm dev:ui           # Storybook 组件/Token/生产页面预览（apps/ui-kit）

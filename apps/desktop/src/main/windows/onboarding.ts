@@ -61,9 +61,14 @@ export async function openOnboardingWindow(view: ProductWindowView = 'settings')
     onboardingWindow = null
   })
 
-  await loadRendererEntry(window, 'onboarding')
-  window.webContents.send(IPC_CHANNEL.onboardingViewRequestedEvent, requestedView)
   onboardingWindow = window
+  try {
+    await loadRendererEntry(window, 'onboarding')
+  } catch (cause) {
+    if (!window.isDestroyed()) window.destroy()
+    throw cause
+  }
+  window.webContents.send(IPC_CHANNEL.onboardingViewRequestedEvent, requestedView)
   return window
 }
 
