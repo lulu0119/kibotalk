@@ -5,6 +5,8 @@ import { TraceCollector } from '@proj-airi/trace-kit/collector'
 import { VoiceAttributes, VoiceNames, VoiceTracks, voiceProfile } from '@proj-airi/trace-kit/voice'
 
 const now = () => performance.now()
+export const filePlaybackActor = '音频文件'
+export const filePlaybackTrack = trackPath(VoiceTracks.Playback, { actor: filePlaybackActor })
 let collector = new TraceCollector({ now })
 let source: TraceSource | undefined
 
@@ -17,6 +19,7 @@ export function startTrace() {
     profiles: [voiceProfile, agentProfile, replyTraceProfile],
     send: (record) => collector.ingest(record),
   })
+  source.setWanted([filePlaybackTrack])
 }
 
 export function pauseTrace() {
@@ -90,13 +93,13 @@ export function createSampleTrace() {
   recognition.instant(VoiceNames.TranscriptPartial, undefined, 2590)
   recognition.end({ ts: 3820 })
   const turn = beginSpan(sample, {
-    track: trackPath(AgentTracks.Turn, { agent: 'coach' }),
+    track: trackPath(AgentTracks.Turn, { agent: 'assistant' }),
     name: AgentNames.ChatTurn,
     ts: 4470,
     ids,
   })
   const reply = beginSpan(sample, {
-    track: trackPath(AgentTracks.LLM, { agent: 'coach' }),
+    track: trackPath(AgentTracks.LLM, { agent: 'assistant' }),
     name: AgentNames.ModelRequest,
     ts: 4530,
     ids,

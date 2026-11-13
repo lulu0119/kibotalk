@@ -3,6 +3,7 @@ import type { ConversationSessionSnapshot, ConversationStorage } from '@kibotalk
 import { defaultAppConfig } from '../config'
 import type { SessionLanguageSnapshot } from '../reply-model'
 import type { ReplyTextStream } from '@kibotalk/llm'
+import type { SystemTranscription } from '../audio/system-transcription'
 import {
   useConversationSession,
   type CandidateRound,
@@ -17,6 +18,7 @@ export type ProductSessionParams = {
   /** Defaults to an in-memory session (playground behavior); product apps pass a persisted `ConversationStorage`. */
   storage?: ConversationStorage
   replyStream?: ReplyTextStream
+  systemTranscription?: SystemTranscription
 }
 
 /**
@@ -32,6 +34,7 @@ export function useProductSession({
   stopSystemAudioStream,
   storage,
   replyStream,
+  systemTranscription,
 }: ProductSessionParams) {
   const [replyEnabled, setReplyEnabled] = useState(true)
   const previousLifecycleRef = useRef<ProductSessionLifecycle>('restoring')
@@ -44,6 +47,7 @@ export function useProductSession({
     mergeMaxMs: defaultAppConfig.aggregator.maxMs,
     speakerThreshold: defaultAppConfig.speakerThreshold,
     replyStream,
+    systemTranscription,
     sttEnabled: true,
     replyEnabled,
     languageSnapshot,

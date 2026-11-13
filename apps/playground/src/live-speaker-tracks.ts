@@ -1,4 +1,7 @@
-import type { SessionAudioSource } from '@kibotalk/conversation'
+import type { SessionDraft } from '@kibotalk/app-shared'
+import type { SessionAudioSource, Speaker } from '@kibotalk/conversation'
+import type { EmbeddingStorage } from '@kibotalk/speaker'
+import type { SpeakerConfidence } from '@sherpaw/speaker-diarization'
 import type { StreamingDiarizer } from '@sherpaw/speaker-diarization/conversation'
 
 export type SpeakerInput = Exclude<SessionAudioSource, 'both'>
@@ -10,12 +13,15 @@ export type LiveSpeakerSegment = {
   speaker: number | null
   live?: boolean
   overlap?: boolean
+  confidence?: SpeakerConfidence
 }
 
 export type LiveSpeakerLane = {
   input: SpeakerInput
   status: 'loading' | 'ready' | 'ended' | 'error'
   time: number
+  startedAt?: number
+  owner?: number
   segments: LiveSpeakerSegment[]
 }
 
@@ -24,19 +30,26 @@ const blockSize = 4096
 const maxPendingSamples = sampleRate * 30
 export const speakerWindowSeconds = 30
 
-export function trackLiveSpeakers(source: SessionAudioSource, onUpdate: (lanes: LiveSpeakerLane[]) => void) {
+type SpeakerEnrollment = { load: EmbeddingStorage['load']; threshold: number }
+
+export function trackLiveSpeakers(
+  source: SessionAudioSource,
+  onUpdate: (lanes: LiveSpeakerLane[]) => void,
+  enrollment?: SpeakerEnrollment,
+) {
   const inputs: SpeakerInput[] = source === 'both' ? ['microphone', 'system'] : [source]
   let origin: number | undefined
   const snapshots = new Map<SpeakerInput, LiveSpeakerLane>()
   const lanes = new Map(inputs.map((input) => [input, trackInput(input, (view) => {
     snapshots.set(input, view)
     onUpdate(inputs.flatMap((key) => snapshots.get(key) ?? []))
-  })]))
+  }, input === 'microphone' ? enrollment : undefined)]))
 
   return {
-    accept(input: SpeakerInput, frame: Float32Array) {
-      origin ??= performance.now()
-      lanes.get(input)?.accept(frame, (performance.now() - origin) / 1000)
+    accept(input: SpeakerInput, frame: Float32Array, capturedAt: number) {
+      const frameStart = capturedAt - frame.length * 1000 / sampleRate
+      origin ??= frameStart
+      lanes.get(input)?.accept(frame, origin, (frameStart - origin) / 1000)
     },
     finish() {
       for (const lane of lanes.values()) lane.finish()
@@ -47,7 +60,20 @@ export function trackLiveSpeakers(source: SessionAudioSource, onUpdate: (lanes: 
   }
 }
 
-function trackInput(input: SpeakerInput, publish: (view: LiveSpeakerLane) => void) {
+export function liveDraftSpeaker(draft: SessionDraft, lanes: LiveSpeakerLane[]): Speaker | null {
+  const lane = lanes.find(({ input }) => input === 'microphone')
+  if (!lane || lane.owner === undefined || lane.startedAt === undefined) return null
+  const segment = lane.segments.find(({ live }) => live)
+  if (!segment || segment.speaker === null || !segment.confidence || segment.confidence === 'low') return null
+
+  const start = (draft.startedAt - lane.startedAt) / 1000
+  const end = (draft.endedAt - lane.startedAt) / 1000
+  // Silero and the diarizer can place the same onset a few frames apart.
+  if (start + 0.25 < segment.start || start >= segment.end || end <= segment.start) return null
+  return segment.speaker === lane.owner ? 'user' : 'other'
+}
+
+function trackInput(input: SpeakerInput, publish: (view: LiveSpeakerLane) => void, enrollment?: SpeakerEnrollment) {
   const controller = new AbortController()
   const { signal } = controller
   const pending: Float32Array[] = []
@@ -55,7 +81,8 @@ function trackInput(input: SpeakerInput, publish: (view: LiveSpeakerLane) => voi
   let pendingSamples = 0
   let time = 0
   let offset = 0
-  let started = false
+  let startedAt: number | undefined
+  let owner: number | undefined
   let processing = false
   let ending = false
   let diarizer: StreamingDiarizer | undefined
@@ -68,7 +95,7 @@ function trackInput(input: SpeakerInput, publish: (view: LiveSpeakerLane) => voi
     }
     const segments = [...turns.values()]
     if (partial && partial.end > cutoff) segments.push(partial)
-    publish({ input, status, time, segments })
+    publish({ input, status, time, startedAt, owner, segments })
   }
 
   function dispose() {
@@ -121,14 +148,20 @@ function trackInput(input: SpeakerInput, publish: (view: LiveSpeakerLane) => voi
   update('loading')
   void import('./speaker-diarization').then(async ({ createLiveSpeakerDiarizer }) => {
     signal.throwIfAborted()
-    diarizer = await createLiveSpeakerDiarizer(signal)
+    const voiceprint = await enrollment?.load()
+    const live = await createLiveSpeakerDiarizer(signal, voiceprint ?? undefined, enrollment?.threshold)
+    diarizer = live.diarizer
+    owner = live.owner
     if (signal.aborted) return
     diarizer.on('speech-start', ({ time }) => {
       partial = { id: -1, start: time + offset, end: time + offset, speaker: null, live: true }
     })
     diarizer.on('partial', ({ partial: guess }) => {
       const start = guess.start + offset
-      partial = { id: -1, start, end: Math.max(start, partial?.end ?? start), speaker: guess.guess?.speaker ?? null, live: true }
+      partial = {
+        id: -1, start, end: Math.max(start, partial?.end ?? start),
+        speaker: guess.guess?.speaker ?? null, confidence: guess.guess?.confidence, live: true,
+      }
     })
     diarizer.on('audio', ({ time, samples }) => {
       if (partial) partial = { ...partial, end: time + offset + samples.length / sampleRate }
@@ -153,12 +186,12 @@ function trackInput(input: SpeakerInput, publish: (view: LiveSpeakerLane) => voi
   }).catch(fail)
 
   return {
-    accept(frame: Float32Array, startTime: number) {
+    accept(frame: Float32Array, origin: number, startTime: number) {
       if (ending || signal.aborted) return
-      if (!started) {
+      if (startedAt === undefined) {
+        startedAt = origin
         offset = startTime
         time = offset
-        started = true
       }
       pending.push(frame.slice())
       pendingSamples += frame.length
@@ -176,7 +209,7 @@ function trackInput(input: SpeakerInput, publish: (view: LiveSpeakerLane) => voi
     finish() {
       if (ending || signal.aborted) return
       ending = true
-      if (!started) {
+      if (startedAt === undefined) {
         update('ended')
         dispose()
       } else {

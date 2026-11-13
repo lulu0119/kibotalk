@@ -13,6 +13,7 @@ import {
 import { IslandBar, IslandDragHandle, IslandSeparator, IslandStatus } from '@kibotalk/ui'
 import { IslandPage } from '@kibotalk/pages'
 import { streamDesktopReply } from './reply-model'
+import { desktopTranscription } from './apple-speech'
 import type { DesktopSessionCommand, IslandContentSide } from '../shared/ipc'
 
 async function getSystemAudioStream(): Promise<MediaStream> {
@@ -44,6 +45,7 @@ function ReadyIsland({
     sessionSnapshot: snapshot,
     storage,
     replyStream: streamDesktopReply,
+    systemTranscription: desktopTranscription,
     getSystemAudioStream,
     stopSystemAudioStream: () => window.kibotalk.systemAudio.stop(),
   })

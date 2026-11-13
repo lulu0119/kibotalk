@@ -118,8 +118,10 @@ export function IslandPage({
   const transcript = session.draft ?? latestTurn
   const showSuggestions = rounds.length > 0 || session.state === 'LLM_STREAMING'
 
-  const sessionError = session.error === 'LLM_SETTINGS_REQUIRED' ? t('replyModelRequired')
-    : session.error === 'VOICEPRINT_REQUIRED' ? t('voiceprintRequired') : session.error
+  let sessionError = session.error
+  if (sessionError === 'LLM_SETTINGS_REQUIRED') sessionError = t('replyModelRequired')
+  if (sessionError === 'VOICEPRINT_REQUIRED') sessionError = t('voiceprintRequired')
+  if (sessionError === 'SYSTEM_TRANSCRIPTION_UNAVAILABLE') sessionError = t('systemTranscriptionUnavailable')
   const content = sessionError || transcript || showSuggestions ? (
     <div className="desktop-float-content desktop-interactive flex min-h-0 w-full flex-1 flex-col gap-2.5">
       {sessionError ? (
@@ -130,7 +132,7 @@ export function IslandPage({
       {transcript ? (
         <div className="glass-chip shrink-0 px-3.5 py-2 text-xs" aria-live="polite">
           <strong className="mr-2 text-[10px] text-island-foreground/50">
-            {transcript.speaker === 'user' ? t('me') : t('other')}
+            {t(transcript.speaker === null ? 'listening' : transcript.speaker === 'user' ? 'me' : 'other')}
           </strong>
           {'sttFailed' in transcript && transcript.sttFailed ? t('sttFailed') : transcript.text || '…'}
         </div>

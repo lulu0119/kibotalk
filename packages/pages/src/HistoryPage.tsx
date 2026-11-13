@@ -91,16 +91,18 @@ export function HistoryPage({
     [selectedId, sessions],
   )
   const windowClassName = 'min-h-dvh bg-background p-2 sm:p-5'
+  const panelLayout = 'grid w-full grid-cols-[minmax(0,1fr)] overflow-hidden sm:grid-cols-[19rem_minmax(0,1fr)] sm:grid-rows-[auto_minmax(0,1fr)]'
   const panelClassName = embedded
-    ? 'grid min-h-0 w-full flex-1 grid-cols-[minmax(0,1fr)] overflow-hidden sm:grid-cols-[19rem_minmax(0,1fr)]'
-    : 'paper-sheet mx-auto grid h-[calc(100dvh-1rem)] w-full max-w-6xl grid-cols-[minmax(0,1fr)] overflow-hidden sm:h-[calc(100dvh-2.5rem)] sm:grid-cols-[19rem_minmax(0,1fr)]'
+    ? 'min-h-0 flex-1'
+    : 'paper-sheet mx-auto h-[calc(100dvh-1rem)] max-w-6xl sm:h-[calc(100dvh-2.5rem)]'
+  const columnLayout = 'min-h-0 sm:row-span-2 sm:grid sm:grid-rows-subgrid'
 
   const page = (
     <>
-      <div className={panelClassName}>
+      <div className={`${panelLayout} ${panelClassName}`}>
         <aside
-          className={`min-h-0 min-w-0 border-border bg-muted/45 sm:flex sm:flex-col sm:border-r ${
-            selected ? 'hidden sm:flex' : 'flex flex-col'
+          className={`${columnLayout} min-w-0 border-border bg-muted/45 sm:border-r ${
+            selected ? 'hidden' : 'flex flex-col'
           }`}
         >
           <div className="flex shrink-0 items-center gap-2 border-b border-border p-3">
@@ -134,7 +136,7 @@ export function HistoryPage({
           </ScrollArea>
         </aside>
 
-        <main className={`min-h-0 ${selected ? 'flex flex-col' : 'hidden sm:flex sm:flex-col'}`}>
+        <main className={`${columnLayout} ${selected ? 'flex flex-col' : 'hidden'}`}>
           {selected ? (
             <>
               <div className="flex shrink-0 items-center gap-3 border-b border-border px-3 py-3 sm:px-5">
@@ -172,7 +174,7 @@ export function HistoryPage({
               </ScrollArea>
             </>
           ) : (
-            <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
+            <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground sm:row-span-2">
               {t('noHistory')}
             </div>
           )}

@@ -94,7 +94,7 @@ export class Pipeline {
 
     const turnId = this.generateId()
     const turnSpan = beginSpan(this.trace, {
-      track: trackPath(AgentTracks.Turn, { agent: 'coach' }),
+      track: trackPath(AgentTracks.Turn, { agent: 'assistant' }),
       name: AgentNames.ChatTurn,
       ids: { turn: turnId, actor: input.speaker },
     })
@@ -158,7 +158,7 @@ export class Pipeline {
   private async runLlm(turnId: string, turnSpan: TraceSpan, speechEndedAt: number): Promise<void> {
     const controller = new AbortController()
     const llmSpan = beginSpan(this.trace, {
-      track: trackPath(AgentTracks.LLM, { agent: 'coach' }),
+      track: trackPath(AgentTracks.LLM, { agent: 'assistant' }),
       name: AgentNames.ModelRequest,
       parent: turnSpan,
       ids: { turn: turnId },

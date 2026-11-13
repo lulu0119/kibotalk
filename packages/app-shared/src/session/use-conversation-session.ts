@@ -9,26 +9,20 @@ import type {
   ReplyCandidate,
 } from '@kibotalk/conversation'
 import { InMemoryConversationStorage } from '@kibotalk/conversation'
-import { EmbeddingSpeakerVerifier, stabilizeSpeaker, type EmbeddingStorage } from '@kibotalk/speaker'
+import { classifySpeaker, EmbeddingSpeakerVerifier, stabilizeSpeaker, type EmbeddingStorage } from '@kibotalk/speaker'
 import type { ReplyTextStream } from '@kibotalk/llm'
 import { beginSpan, trackPath, type TraceSink } from '@proj-airi/trace-kit'
 import { VoiceAttributes, VoiceTracks } from '@proj-airi/trace-kit/voice'
 import { createSpeechEngine } from '../audio/speech-engine'
-import { selectTranscriptionModel } from '../audio/local-models'
+import { selectTranscriptionOption } from '../audio/local-models'
+import { withSystemTranscription, type SystemTranscription } from '../audio/system-transcription'
 import { createWorkerEmbedAudio } from '../audio/speaker-embed'
 import { localizedSessionTitle } from '../i18n'
 import { createCurrentSpeakerEmbeddingStorage } from '../speaker-embedding-storage'
 import { browserReplyModel, createReplyClient, type SessionLanguageSnapshot } from '../reply-model'
-import { createSessionCapture, type SessionCapture } from './capture-session'
+import { createSessionCapture, type SessionCapture, type SessionDraft } from './capture-session'
 
 export type SessionTurn = ConversationTurn & { candidates?: ReplyCandidate[] }
-
-export type SessionDraft = {
-  speaker: 'user' | 'other'
-  text: string
-  startedAt: number
-  endedAt: number
-}
 
 export type CandidateRound = { id: string; candidates: ReplyCandidate[] }
 
@@ -46,6 +40,7 @@ export type ConversationSessionParams = {
   replyEnabled: boolean
   languageSnapshot: SessionLanguageSnapshot
   replyStream?: ReplyTextStream
+  systemTranscription?: SystemTranscription
   speakerEmbeddingStorage?: EmbeddingStorage
   trace?: TraceSink
   /** Defaults to a fresh `InMemoryConversationStorage` (playground behavior). */
@@ -56,6 +51,8 @@ export type ConversationSessionParams = {
   sessionSnapshot?: ConversationSessionSnapshot
   /** Allow an unclassified microphone input, used by the playground. */
   allowUnenrolledMicrophone?: boolean
+  previewSpeaker?: boolean
+  getMicrophoneStream?: () => MediaStream | undefined
   /** System-audio stream factory supplied by the host. */
   getSystemAudioStream?: () => Promise<MediaStream>
   stopSystemAudioStream?: () => Promise<void>
@@ -143,7 +140,7 @@ export function useConversationSession(params: ConversationSessionParams) {
     captureRef.current?.updateTurnGate(params.pauseMs, params.mergeMaxMs)
   }, [params.pauseMs, params.mergeMaxMs])
 
-  async function start(options: { resume?: boolean } = {}) {
+  async function start(options: { resume?: boolean; audioSource?: ConversationSessionSnapshot['audioSource'] } = {}) {
     if (startingRef.current || teardownRef.current || captureRef.current) return
     const starting = new AbortController()
     startingRef.current = starting
@@ -151,11 +148,10 @@ export function useConversationSession(params: ConversationSessionParams) {
     const p = paramsRef.current
     const snapshot = options.resume && activeSession ? activeSession.snapshot : p.sessionSnapshot
     const languageSnapshot = snapshot ?? p.languageSnapshot
-    const source = snapshot?.audioSource ?? 'microphone'
-    const model = selectTranscriptionModel(languageSnapshot.conversationLang)
+    const source = snapshot?.audioSource ?? options.audioSource ?? 'microphone'
+    const language = languageSnapshot.conversationLang
 
     setError('')
-    setLoadingModel({ name: model.name })
     setLifecycle('starting')
     setDraft(null)
     let startedPersistedSession = false
@@ -168,15 +164,34 @@ export function useConversationSession(params: ConversationSessionParams) {
       })
       const embedding = source === 'microphone' ? await verifier.loadEmbedding() : null
       if (source === 'microphone' && !embedding && !p.allowUnenrolledMicrophone) throw new Error('VOICEPRINT_REQUIRED')
+      const option = selectTranscriptionOption(language, await p.systemTranscription?.languages())
+      const model = 'files' in option ? option : undefined
+      const system = model ? undefined : p.systemTranscription
+      const onDownload = (fraction: number) => {
+        if (!signal.aborted) setLoadingModel({ name: option.name, percent: Math.round(fraction * 100) })
+      }
       signal.throwIfAborted()
-      const engine = await createSpeechEngine(model, {
+      setLoadingModel({ name: option.name })
+      if (system) {
+        try {
+          await system.prepare(language, onDownload, signal)
+        } catch {
+          signal.throwIfAborted()
+          throw new Error('SYSTEM_TRANSCRIPTION_UNAVAILABLE')
+        }
+      }
+      const speechOptions = {
         threshold: p.speechThreshold,
         minSpeechMs: p.minSpeechDurationMs,
         minSilenceMs: p.minSilenceDurationMs,
         maxSpeechMs: p.mergeMaxMs,
-      }, source === 'both' ? 2 : 1, signal, (fraction) => {
-        if (!signal.aborted) setLoadingModel({ name: model.name, percent: Math.round(fraction * 100) })
-      })
+        previewSpeaker: Boolean(embedding) && p.previewSpeaker !== false,
+      }
+      const laneCount = source === 'both' ? 2 : 1
+      const vad = await createSpeechEngine(model, speechOptions, laneCount, signal, onDownload)
+      const engine = system
+        ? withSystemTranscription(vad, (streamSignal) => system.start(language, streamSignal), signal, speechOptions, laneCount)
+        : vad
 
       const shouldGenerateReply = () => paramsRef.current.replyEnabled
       const llm = createReplyClient(
@@ -208,11 +223,29 @@ export function useConversationSession(params: ConversationSessionParams) {
       })
 
       let stableSpeaker: 'user' | 'other' = 'other'
+      async function scoreSpeaker(pcm: Float32Array, draft: boolean) {
+        if (!embedding) return
+        const verification = p.trace && beginSpan(p.trace, {
+          track: trackPath(VoiceTracks.Speech, { actor: draft ? 'unknown' : stableSpeaker }),
+          name: draft ? 'speaker.verify.partial' : 'speaker.verify',
+        })
+        try {
+          const threshold = paramsRef.current.speakerThreshold
+          verifier.setThreshold(threshold)
+          const result = await verifier.verify(pcm.buffer as ArrayBuffer, embedding)
+          verification?.end({ attrs: { [VoiceAttributes.SpeakerScore]: result.similarity } })
+          return { ...result, threshold }
+        } catch (cause) {
+          verification?.end({ status: 'error' })
+          if (!draft) setError(String(cause))
+        }
+      }
       capture = createSessionCapture({
         engine,
         source,
         language: languageSnapshot.conversationLang,
         microphoneDeviceId: snapshot?.microphoneDeviceId,
+        getMicrophoneStream: p.getMicrophoneStream,
         getSystemAudioStream: p.getSystemAudioStream,
         stopSystemAudioStream: p.stopSystemAudioStream,
         signal,
@@ -221,23 +254,17 @@ export function useConversationSession(params: ConversationSessionParams) {
         transcriptionEnabled: () => paramsRef.current.sttEnabled,
         async verifySpeaker(pcm) {
           // Short VAD fragments lack enough speech for CAM++ to score reliably.
-          if (!embedding || pcm.length < 16000) return stableSpeaker
-          const verification = p.trace && beginSpan(p.trace, {
-            track: trackPath(VoiceTracks.Speech, { actor: stableSpeaker }),
-            name: 'speaker.verify',
-          })
-          try {
-            const threshold = paramsRef.current.speakerThreshold
-            verifier.setThreshold(threshold)
-            const result = await verifier.verify(pcm.buffer as ArrayBuffer, embedding)
-            verification?.end({ attrs: { [VoiceAttributes.SpeakerScore]: result.similarity } })
+          if (pcm.length < 16000) return stableSpeaker
+          const result = await scoreSpeaker(pcm, false)
+          if (result) {
             setConfidence(result.confidence)
-            stableSpeaker = stabilizeSpeaker(result.similarity, stableSpeaker, threshold)
-          } catch (cause) {
-            verification?.end({ status: 'error' })
-            setError(String(cause))
+            stableSpeaker = stabilizeSpeaker(result.similarity, stableSpeaker, result.threshold)
           }
           return stableSpeaker
+        },
+        async verifyDraftSpeaker(pcm) {
+          const result = await scoreSpeaker(pcm, true)
+          return result ? classifySpeaker(result.similarity, result.threshold) : null
         },
         onTurn(turn) {
           pipelineWorkRef.current = pipelineWorkRef.current
@@ -279,6 +306,7 @@ export function useConversationSession(params: ConversationSessionParams) {
       setRecoveredUnexpectedPause(false)
       setRunning(true)
       setLifecycle('running')
+      return true
     } catch (cause) {
       if (!signal.aborted) setError(cause instanceof Error ? cause.message : String(cause))
       if (capture) await capture.stop(false).catch(() => {})

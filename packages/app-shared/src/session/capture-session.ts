@@ -1,5 +1,5 @@
 import { createSegmentAggregator, type SegmentAggregator } from '@kibotalk/audio/aggregator'
-import type { AppLanguage, SessionAudioSource } from '@kibotalk/conversation'
+import type { AppLanguage, SessionAudioSource, Speaker } from '@kibotalk/conversation'
 import type { FinalizedTurnInput } from '@kibotalk/pipeline'
 import { beginSpan, trackPath, type TraceSink, type TraceSpan } from '@proj-airi/trace-kit'
 import { VoiceAttributes, VoiceNames, VoiceTracks } from '@proj-airi/trace-kit/voice'
@@ -8,25 +8,26 @@ import type { SpeechEngine } from '../audio/speech-engine'
 import type { SpeechSegment, SpeechUpdate } from '../audio/speech.worker'
 import { finalizedTurnFromRealtimeSegments, type TranscribedAudioSegment } from './realtime-turn'
 
-type Speaker = 'user' | 'other'
-type Draft = { speaker: Speaker; text: string; startedAt: number; endedAt: number }
+export type SessionDraft = { speaker: Speaker | null; text: string; startedAt: number; endedAt: number }
 
 type CaptureOptions = {
   engine: SpeechEngine
   source: SessionAudioSource
   language: AppLanguage
   microphoneDeviceId?: string
+  getMicrophoneStream?: () => MediaStream | undefined
   getSystemAudioStream?: () => Promise<MediaStream>
   stopSystemAudioStream?: () => Promise<void>
   signal: AbortSignal
   pauseMs: number
   maxMs: number
   verifySpeaker: (pcm: Float32Array) => Promise<Speaker>
+  verifyDraftSpeaker?: (pcm: Float32Array) => Promise<Speaker | null>
   transcriptionEnabled: () => boolean
   onTurn: (turn: FinalizedTurnInput) => void
-  onDraft: (draft: Draft | null) => void
+  onDraft: (draft: SessionDraft | null) => void
   onSpeech: (speaking: boolean) => void
-  onAudioFrame?: (source: Exclude<SessionAudioSource, 'both'>, pcm: Float32Array) => void
+  onAudioFrame?: (source: Exclude<SessionAudioSource, 'both'>, pcm: Float32Array, capturedAt: number) => void
   onDeviceEnded: () => void
   onError: (message: string) => void
   trace?: TraceSink
@@ -36,10 +37,10 @@ type Lane = {
   audio: AudioSource
   aggregator: SegmentAggregator<TranscribedAudioSegment>
   index: number
-  system: boolean
+  sourceSpeaker: Speaker | null
   speaking: boolean
   enabled: boolean
-  draft?: Draft
+  draft?: SessionDraft
   recognition?: TraceSpan
 }
 
@@ -47,8 +48,8 @@ export function createSessionCapture(options: CaptureOptions) {
   const lanes: Lane[] = []
   let queued = Promise.resolve()
   let closing = false
+  let previewPending = false
   let shutdown: Promise<void> | undefined
-  let previousSpeaker: Speaker = 'other'
 
   function error(cause: unknown) {
     options.onError(cause instanceof Error ? cause.message : String(cause))
@@ -60,14 +61,23 @@ export function createSessionCapture(options: CaptureOptions) {
     options.onDraft(latest ?? null)
   }
 
+  function verifyDraft(lane: Lane, pcm: Float32Array) {
+    const { verifyDraftSpeaker } = options
+    const startedAt = lane.draft?.startedAt
+    if (!verifyDraftSpeaker || startedAt === undefined || previewPending) return
+    previewPending = true
+    void verifyDraftSpeaker(pcm).then((speaker) => {
+      if (!speaker || closing || !lane.speaking || !options.transcriptionEnabled() || lane.draft?.startedAt !== startedAt) return
+      lane.draft = { ...lane.draft, speaker }
+      publishDraft()
+    }).catch(error).finally(() => { previewPending = false })
+  }
+
   function queueSegments(lane: Lane, segments: SpeechSegment[]) {
     for (const segment of segments) {
       queued = queued.then(async () => {
         if (!segment.text) return
-        const speaker = lane.system
-          ? 'other'
-          : options.source === 'both' ? 'user' : await options.verifySpeaker(segment.pcm)
-        previousSpeaker = speaker
+        const speaker = lane.sourceSpeaker ?? await options.verifySpeaker(segment.pcm)
         const trace = options.trace
         if (trace) {
           const now = trace.now()
@@ -92,7 +102,7 @@ export function createSessionCapture(options: CaptureOptions) {
     }
   }
 
-  function accept(lane: Lane, update: SpeechUpdate) {
+  function accept(lane: Lane, update: SpeechUpdate, capturedAt: number) {
     if (update.segments.length) {
       lane.recognition?.end()
       lane.recognition = undefined
@@ -103,7 +113,7 @@ export function createSessionCapture(options: CaptureOptions) {
     if (changed && update.speaking) {
       lane.aggregator.hold()
       if (options.trace) {
-        const actor = lane.system ? 'other' : options.source === 'both' ? 'user' : previousSpeaker
+        const actor = lane.sourceSpeaker ?? 'unknown'
         lane.recognition = beginSpan(options.trace, {
           track: trackPath(VoiceTracks.ASR, { actor }),
           name: VoiceNames.SpeechRecognition,
@@ -127,16 +137,17 @@ export function createSessionCapture(options: CaptureOptions) {
     if (draft && (draft.text !== lane.draft?.text || draft.startedAt !== lane.draft.startedAt)) {
       lane.draft = {
         ...draft,
-        speaker: lane.system ? 'other' : options.source === 'both' ? 'user' : previousSpeaker,
-        endedAt: Date.now(),
+        speaker: lane.draft?.startedAt === draft.startedAt ? lane.draft.speaker : lane.sourceSpeaker,
+        endedAt: capturedAt,
       }
       if (draft.text) lane.recognition?.instant(VoiceNames.TranscriptPartial)
     }
     if (changed || draft || update.segments.length) publishDraft()
+    if (update.speakerPreview && lane.sourceSpeaker === null) verifyDraft(lane, update.speakerPreview)
   }
 
   async function startLane(system: boolean) {
-    const stream = system ? await options.getSystemAudioStream?.() : undefined
+    const stream = system ? await options.getSystemAudioStream?.() : options.getMicrophoneStream?.()
     if (options.signal.aborted) {
       stream?.getTracks().forEach((track) => track.stop())
       options.signal.throwIfAborted()
@@ -170,13 +181,17 @@ export function createSessionCapture(options: CaptureOptions) {
       }
       options.onTurn(turn)
     })
+    let sourceSpeaker: Speaker | null = null
+    if (system) sourceSpeaker = 'other'
+    else if (options.source === 'both') sourceSpeaker = 'user'
     const lane: Lane = {
-      index: lanes.length, audio, aggregator, system, speaking: false, enabled: false,
+      index: lanes.length, audio, aggregator, sourceSpeaker, speaking: false, enabled: false,
     }
     lanes.push(lane)
     await audio.start((pcm) => {
       if (closing) return
-      options.onAudioFrame?.(system ? 'system' : 'microphone', pcm)
+      const capturedAt = Date.now()
+      options.onAudioFrame?.(system ? 'system' : 'microphone', pcm, capturedAt)
       if (!options.transcriptionEnabled()) {
         if (lane.enabled) {
           lane.enabled = false
@@ -192,8 +207,8 @@ export function createSessionCapture(options: CaptureOptions) {
         return
       }
       lane.enabled = true
-      void options.engine.process(lane.index, pcm).then((update) => {
-        if (lane.enabled) accept(lane, update)
+      void options.engine.process(lane.index, pcm, capturedAt).then((update) => {
+        if (lane.enabled) accept(lane, update, capturedAt)
       }).catch((cause) => {
         if (closing) return
         error(cause)

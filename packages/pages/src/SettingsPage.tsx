@@ -61,6 +61,7 @@ export type SettingsPageProps = {
   embedded?: boolean
   prefs: LanguagePrefs
   sessionActive: boolean
+  systemTranscriptionLanguages?: readonly AppLanguage[]
   replyModelSettings?: LlmSettingsStore
   onPrefsChange: (prefs: LanguagePrefs) => void
   onBack: () => void
@@ -117,6 +118,7 @@ export function SettingsPage({
   embedded = false,
   prefs,
   sessionActive,
+  systemTranscriptionLanguages,
   replyModelSettings,
   onPrefsChange,
   onBack,
@@ -381,7 +383,11 @@ export function SettingsPage({
             <div className="space-y-6">
               <SettingsGroup>
                 <div className="p-4">
-                  <TranscriptionModelSettings language={prefs.conversationLang} locked={sessionActive} />
+                  <TranscriptionModelSettings
+                    language={prefs.conversationLang}
+                    systemLanguages={systemTranscriptionLanguages}
+                    locked={sessionActive}
+                  />
                 </div>
               </SettingsGroup>
               <SettingsGroup>

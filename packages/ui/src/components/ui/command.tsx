@@ -26,7 +26,7 @@ function CommandInput({
   return (
     <div
       data-slot="command-input-wrapper"
-      className="flex h-10 items-center gap-2 border-b px-3"
+      className="flex h-10 shrink-0 items-center gap-2 border-b px-3"
     >
       <MagnifierIcon className="size-4 shrink-0 opacity-50" />
       <CommandPrimitive.Input
@@ -49,7 +49,7 @@ function CommandList({
     <CommandPrimitive.List
       data-slot="command-list"
       className={cn(
-        "max-h-72 scroll-py-1 overflow-x-hidden overflow-y-auto",
+        "max-h-72 scroll-py-1 overflow-x-hidden overflow-y-auto overscroll-contain",
         className
       )}
       {...props}

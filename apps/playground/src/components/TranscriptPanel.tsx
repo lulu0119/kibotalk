@@ -7,24 +7,28 @@ export function TranscriptPanel({
   draft,
   source,
   verifiedSpeakers,
+  usesFile,
 }: {
   turns: SessionTurn[]
   draft: SessionDraft | null
   source: SessionAudioSource
   verifiedSpeakers: boolean
+  usesFile: boolean
 }) {
-  function speakerLabel(speaker: Speaker) {
+  function speakerLabel(speaker: Speaker | null) {
     if (source === 'system' || (source === 'both' && speaker === 'other')) return '共享音频'
-    if (!verifiedSpeakers) return '麦克风'
+    if (!verifiedSpeakers) return usesFile ? '音频文件' : '麦克风'
+    if (speaker === null) return null
     return speaker === 'user' ? '我' : '对方'
   }
+  const draftLabel = draft && speakerLabel(draft.speaker)
 
   return (
     <div className="min-h-0 flex-1 overflow-auto px-4 py-4 sm:px-6">
       <ol className="space-y-3" aria-label="对话转写">
         {draft && (
           <li className="space-y-2 rounded-md border border-dashed p-3">
-            <Badge variant="secondary">{speakerLabel(draft.speaker)} · 正在转写</Badge>
+            <Badge variant="secondary">{draftLabel && `${draftLabel} · `}正在转写</Badge>
             <p className="text-sm wrap-break-word">{draft.text || '…'}</p>
           </li>
         )}

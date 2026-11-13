@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import type { AppLanguage } from '@kibotalk/conversation'
 import {
   createCurrentSpeakerEmbeddingStorage,
   createLocalConversationStorage,
@@ -19,6 +20,7 @@ import type {
   MediaAccessStatus,
   ProductWindowView,
 } from '../shared/ipc'
+import { desktopTranscription } from './apple-speech'
 
 const desktopReplyModel = {
   settings: window.kibotalk.replyModel,
@@ -38,6 +40,7 @@ function DesktopWindowContent({
   const [gate, setGate] = useState<Gate>('booting')
   const [view, setView] = useState<ProductWindowView>('settings')
   const [enrolled, setEnrolled] = useState<boolean | null>(null)
+  const [systemLanguages, setSystemLanguages] = useState<readonly AppLanguage[] | null>(null)
   const [sessionActive, setSessionActive] = useState(false)
   const [activeSessionId, setActiveSessionId] = useState<string>()
   const [microphonePermission, setMicrophonePermission] =
@@ -62,6 +65,9 @@ function DesktopWindowContent({
 
   useEffect(() => {
     let cancelled = false
+    void desktopTranscription.languages().then((languages) => {
+      if (!cancelled) setSystemLanguages(languages)
+    })
     void window.kibotalk.onboarding.getStatus().then((status) => {
       if (cancelled) return
       setView(status.view)
@@ -137,7 +143,7 @@ function DesktopWindowContent({
     return () => observer.disconnect()
   }, [gate])
 
-  if (gate === 'booting' || (gate === 'setup' && enrolled === null)) {
+  if (gate === 'booting' || systemLanguages === null || (gate === 'setup' && enrolled === null)) {
     return (
       <WizardScreen embedded className="text-center">
         <p className="text-sm text-muted-foreground">{t('preparing')}</p>
@@ -170,6 +176,7 @@ function DesktopWindowContent({
       <SettingsPage
         platform="desktop"
         replyModelSettings={window.kibotalk.replyModel}
+        systemTranscriptionLanguages={systemLanguages}
         embedded
         prefs={prefs}
         sessionActive={sessionActive}
@@ -198,6 +205,7 @@ function DesktopWindowContent({
       prefs={prefs}
       enrolled={!!enrolled}
       replyModel={desktopReplyModel}
+      systemTranscriptionLanguages={systemLanguages}
       onDownloadProgress={window.kibotalk.onboarding.updateDownloadProgress}
       requestMicrophone={window.kibotalk.permissions.requestMicrophone}
       onPrefsChange={onPrefsChange}

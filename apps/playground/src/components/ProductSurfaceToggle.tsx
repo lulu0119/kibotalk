@@ -1,5 +1,5 @@
 import { NotesMinimalisticIcon, WindowFrameIcon } from '@kibotalk/ui/icons'
-import { Button, cn } from '@kibotalk/ui'
+import { ToggleGroup, ToggleGroupItem } from '@kibotalk/ui'
 import { useConfig, type ProductSurfaceMode } from '../config-store'
 
 const MODES: Array<{ value: ProductSurfaceMode; label: string; hint: string; icon: typeof WindowFrameIcon }> = [
@@ -15,29 +15,21 @@ export function ProductSurfaceToggle({ className }: { className?: string }) {
   const patch = useConfig((s) => s.patch)
 
   return (
-    <div
-      className={cn('inline-flex rounded-md border border-border/60 bg-muted/40 p-0.5', className)}
-      role="group"
+    <ToggleGroup
+      type="single"
+      className={className}
       aria-label="产品表面模式"
+      value={mode}
+      onValueChange={(value) => {
+        if (value) patch({ productSurfaceMode: value as ProductSurfaceMode })
+      }}
     >
-      {MODES.map(({ value, label, hint, icon: Icon }) => {
-        const active = mode === value
-        return (
-          <Button
-            key={value}
-            type="button"
-            size="sm"
-            variant={active ? 'secondary' : 'ghost'}
-            className={cn(!active && 'text-muted-foreground')}
-            aria-pressed={active}
-            title={hint}
-            onClick={() => patch({ productSurfaceMode: value })}
-          >
-            <Icon className="size-3.5" />
-            {label}
-          </Button>
-        )
-      })}
-    </div>
+      {MODES.map(({ value, label, hint, icon: Icon }) => (
+        <ToggleGroupItem key={value} value={value} title={hint}>
+          <Icon aria-hidden="true" />
+          {label}
+        </ToggleGroupItem>
+      ))}
+    </ToggleGroup>
   )
 }

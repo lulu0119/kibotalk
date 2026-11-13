@@ -6,7 +6,8 @@ export {
   modelIsDownloaded,
   prepareBaseSpeechModels,
   saveTranscriptionModel,
-  selectTranscriptionModel,
+  selectTranscriptionOption,
+  systemTranscriptionOption,
   transcriptionModels,
   loadModelFile,
   speakerModelFile,
@@ -58,12 +59,13 @@ export type {
   ProductSessionLifecycle,
   ConversationSessionParams,
   SessionTurn,
-  SessionDraft,
   CandidateRound,
 } from './session/use-conversation-session'
+export type { SessionDraft } from './session/capture-session'
 export { useProductSession } from './session/use-product-session'
 export type {
   ProductSessionController,
   ProductSessionParams,
 } from './session/use-product-session'
 export { createSpeechEngine, type SpeechEngine } from './audio/speech-engine'
+export type { SystemTranscription } from './audio/system-transcription'

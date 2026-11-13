@@ -1,11 +1,15 @@
 import type { ChatMessage, LlmSettingsStore, ReplyModelHost, ReplyStreamMessage } from '@kibotalk/llm'
 import type { OnboardingDownloadProgress } from '@kibotalk/pages'
 
+export const APPLE_SPEECH_IPC = 'apple-speech:message'
+
+export function supportsAppleSpeech(): boolean {
+  return process.platform === 'darwin' && Number.parseInt(process.getSystemVersion(), 10) >= 26
+}
+
 /**
  * IPC channel names + payload/result types shared by main, preload, and
- * renderer. Plain `ipcMain.handle` / `contextBridge` — no eventa dependency
- * (see the desktop plan's Phase D notes: not worth it for this handful of
- * channels).
+ * renderer.
  */
 
 /** Mirrors Electron's `systemPreferences.getMediaAccessStatus` return type without importing `electron` into renderer-reachable code. */
@@ -96,6 +100,11 @@ export type KiboTalkDesktopApi = {
   systemAudio: {
     start: () => Promise<SystemAudioStartResult>
     stop: () => Promise<void>
+  }
+  appleSpeechTransport: {
+    supportedSystem: boolean
+    send: (message: unknown) => void
+    subscribe: (callback: (message: unknown) => void) => () => void
   }
   island: {
     getContentSide: () => Promise<IslandContentSide>

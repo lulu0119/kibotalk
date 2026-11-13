@@ -7,8 +7,7 @@ import {
   languageLabel,
   prepareBaseSpeechModels,
   saveTranscriptionModel,
-  selectTranscriptionModel,
-  transcriptionModels,
+  selectTranscriptionOption,
   useI18n,
   type LanguagePrefs,
   type TranscriptionModel,
@@ -95,27 +94,27 @@ export type OnboardingPageProps = {
   embedded?: boolean
   requestMicrophone?: () => Promise<boolean>
   replyModel?: Pick<ReplyModelHost, 'settings' | 'test'>
+  systemTranscriptionLanguages?: readonly AppLanguage[]
   onDownloadProgress?: (progress: OnboardingDownloadProgress) => void
 }
 
 export function OnboardingPage({
   prefs, enrolled, onPrefsChange, onComplete, embedded, requestMicrophone,
-  replyModel = browserReplyModel, onDownloadProgress,
+  replyModel = browserReplyModel, onDownloadProgress, systemTranscriptionLanguages,
 }: OnboardingPageProps) {
   const { t, language } = useI18n()
   const [step, setStep] = useState<'speech' | 'reply' | 'edit-reply' | 'voice'>('speech')
   const [recorded, setRecorded] = useState(false)
-  const [modelId, setModelId] = useState(() => selectTranscriptionModel(prefs.conversationLang).id)
+  const [modelId, setModelId] = useState<string>()
   const [confirmedModel, setConfirmedModel] = useState<TranscriptionModel>()
   const [selectionError, setSelectionError] = useState(false)
-  const model = transcriptionModels.find((item) => item.id === modelId && item.languages.includes(prefs.conversationLang))
-    ?? selectTranscriptionModel(prefs.conversationLang)
+  const option = selectTranscriptionOption(prefs.conversationLang, systemTranscriptionLanguages, modelId)
   const base = useModelDownload(prepareBaseSpeechModels)
   const prepareTranscription = useMemo<PrepareModels | undefined>(() => {
     if (confirmedModel) return (onProgress) => downloadTranscriptionModel(confirmedModel, onProgress)
   }, [confirmedModel])
   const transcription = useModelDownload(prepareTranscription)
-  const modelsReady = base.status === 'ready' && transcription.status === 'ready'
+  const modelsReady = base.status === 'ready' && (!confirmedModel || transcription.status === 'ready')
   const failedDownloads = (confirmedModel ? [base, transcription] : [base])
     .filter((download) => download.status === 'error')
   const downloadLabel = base.status === 'downloading' ? t('baseSpeechModels') : confirmedModel?.name
@@ -134,13 +133,13 @@ export function OnboardingPage({
 
   function confirmModel() {
     try {
-      saveTranscriptionModel(model.id)
+      saveTranscriptionModel(option.id)
     } catch {
       setSelectionError(true)
       return
     }
     setSelectionError(false)
-    setConfirmedModel(model)
+    setConfirmedModel('files' in option ? option : undefined)
     setStep('reply')
   }
 
@@ -194,7 +193,12 @@ export function OnboardingPage({
                 ))}
               </ToggleGroup>
             </div>
-            <TranscriptionModelPicker language={prefs.conversationLang} value={model.id} onChange={setModelId} />
+            <TranscriptionModelPicker
+              language={prefs.conversationLang}
+              systemLanguages={systemTranscriptionLanguages}
+              value={option.id}
+              onChange={setModelId}
+            />
             {selectionError && <p role="alert" className="text-sm text-destructive">{t('modelSettingsError')}</p>}
             {error}
             <OnboardingActions>

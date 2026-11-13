@@ -47,26 +47,33 @@ export function SpeakerTrackRows({
   to,
   position,
   onSeek,
+  owner,
 }: {
   tracks: ReadonlyMap<number | null, readonly Interval[]>
   from?: number
   to: number
   position?: number
   onSeek?: (time: number) => void
+  owner?: number
 }) {
   const duration = Math.max(0.01, to - from)
   return (
     <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-2">
       {[...tracks].map(([speaker, segments]) => {
         const color = speakerColor(speaker)
-        const name = speakerName(speaker)
+        const name = speaker === owner ? '我' : speakerName(speaker)
         const active = segments.some((segment) => isActive(segment, position))
+        const speaking = active && position === undefined
         return (
           <div key={speaker ?? 'unknown'} className="col-span-2 grid grid-cols-subgrid items-center" aria-label={name}>
-            <div className={cn('flex flex-wrap items-center gap-1 text-sm', !onSeek && 'w-28')}>
-              <span aria-hidden="true" className={cn('size-2 shrink-0 rounded-full', color)} />
-              {name}
-              {active && <Badge variant="secondary">{position === undefined ? '说话中' : '当前'}</Badge>}
+            <div className={cn('flex items-center gap-1.5 text-sm', position === undefined ? 'whitespace-nowrap' : 'flex-wrap', !onSeek && 'w-28')} title={speaking ? '说话中' : undefined}>
+              <span aria-hidden="true" className={cn(
+                'relative size-2 shrink-0 rounded-full', color,
+                speaking && 'after:absolute after:-inset-0.5 after:rounded-full after:bg-inherit after:opacity-30 motion-safe:after:animate-pulse',
+              )} />
+              <span className={cn(speaking && 'font-semibold')}>{name}</span>
+              {speaking && <span className="sr-only">说话中</span>}
+              {active && position !== undefined && <Badge variant="secondary">当前</Badge>}
             </div>
             <div className={cn('relative min-w-0 overflow-hidden rounded-md border bg-muted/50', onSeek ? 'h-10' : 'h-7')}>
               {segments.filter(({ start, end }) => end > from && start < to && end > start).map((segment) => {

@@ -46,8 +46,8 @@ export async function createSpeechEngine(
     throw cause
   }
   return {
-    process: (lane: number, pcm: Float32Array) =>
-      run(() => api.process(lane, transfer(pcm, [pcm.buffer as ArrayBuffer]), Date.now())),
+    process: (lane: number, pcm: Float32Array, capturedAt = Date.now()) =>
+      run(() => api.process(lane, transfer(pcm, [pcm.buffer as ArrayBuffer]), capturedAt)),
     finish: (lane: number) => run(() => api.finish(lane)),
     reset: (lane: number) => run(() => api.reset(lane)),
     dispose,

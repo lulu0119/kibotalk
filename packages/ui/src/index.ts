@@ -9,7 +9,7 @@ export {
   CardContent,
   CardFooter,
 } from './components/ui/card'
-export { Tabs, TabsList, TabsTrigger, TabsContent } from './components/ui/tabs'
+export { Tabs, TabsList, TabsTrigger, TabsContent, tabsStyles } from './components/ui/tabs'
 export { Badge, badgeVariants, type BadgeProps } from './components/ui/badge'
 export { Input } from './components/ui/input'
 export { Textarea } from './components/ui/textarea'

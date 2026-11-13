@@ -92,7 +92,7 @@ export function SessionTranscript({ id, turns, draft, visible }: {
               {draft ? (
                 <li className="min-w-0 space-y-1">
                   <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                    <span className="font-semibold">{t(draft.speaker === 'user' ? 'me' : 'other')}</span>
+                    {draft.speaker && <span className="font-semibold">{t(draft.speaker === 'user' ? 'me' : 'other')}</span>}
                     <span>{t('listening')}</span>
                   </div>
                   <p className="w-fit max-w-full whitespace-pre-wrap wrap-anywhere rounded-md border border-dashed border-border bg-background px-3 py-2 text-sm leading-relaxed">

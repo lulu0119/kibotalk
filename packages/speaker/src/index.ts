@@ -2,7 +2,7 @@ export type { Embedding, SpeakerVerifier, VerifyResult } from './types'
 export { EmbeddingSpeakerVerifier } from './embedding-verifier'
 export type { EmbedAudio, EmbeddingVerifierOptions } from './embedding-verifier'
 export { cosineSimilarity } from './cosine-sim'
-export { stabilizeSpeaker } from './hysteresis'
+export { classifySpeaker, stabilizeSpeaker } from './hysteresis'
 export {
   EnrollmentAudioError,
   prepareEnrollmentAudio,

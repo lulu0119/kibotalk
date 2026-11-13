@@ -5,7 +5,7 @@ import {
   downloadTranscriptionModel,
   modelIsDownloaded,
   saveTranscriptionModel,
-  selectTranscriptionModel,
+  selectTranscriptionOption,
   useI18n,
 } from '@kibotalk/app-shared'
 import { emptyLlmSettings, readLlmSettings, type LlmSettings, type LlmSettingsStore, type ReplyModelHost } from '@kibotalk/llm'
@@ -24,7 +24,7 @@ type SaveError = 'modelSettingsError' | 'replyModelTestFailed' | 'replyModelBrow
 function ProviderLogo({ providerId }: { providerId?: string }) {
   const [failed, setFailed] = useState(false)
   return (
-    <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-foreground">
+    <span className="flex size-8 shrink-0 items-center justify-center text-foreground">
       {providerId && !failed ? (
         <img
           className="size-5 object-contain dark:invert"
@@ -351,21 +351,24 @@ export function ReplyModelSettings({
   )
 }
 
-export function TranscriptionModelSettings({ language, locked = false }: { language: AppLanguage; locked?: boolean }) {
+export function TranscriptionModelSettings({ language, systemLanguages, locked = false }: {
+  language: AppLanguage
+  systemLanguages?: readonly AppLanguage[]
+  locked?: boolean
+}) {
   const { t } = useI18n()
-  const [model, setModel] = useState(() => selectTranscriptionModel(language))
+  const [preferred, setPreferred] = useState<string>()
+  const option = selectTranscriptionOption(language, systemLanguages, preferred)
+  const model = 'files' in option ? option : undefined
   const [downloaded, setDownloaded] = useState(false)
   const [progress, setProgress] = useState<number | null>(null)
   const [error, setError] = useState(false)
 
   useEffect(() => {
-    setModel(selectTranscriptionModel(language))
-  }, [language])
-
-  useEffect(() => {
     let active = true
     setDownloaded(false)
     setError(false)
+    if (!model) return
     void modelIsDownloaded(model).then((ready) => {
       if (active) setDownloaded(ready)
     }).catch(() => {})
@@ -373,6 +376,7 @@ export function TranscriptionModelSettings({ language, locked = false }: { langu
   }, [model])
 
   async function download() {
+    if (!model) return
     setError(false)
     setProgress(0)
     try {
@@ -389,21 +393,22 @@ export function TranscriptionModelSettings({ language, locked = false }: { langu
     <div className="space-y-3">
       <TranscriptionModelPicker
         language={language}
-        value={model.id}
+        systemLanguages={systemLanguages}
+        value={option.id}
         disabled={locked || progress !== null}
         onChange={(id) => {
           saveTranscriptionModel(id)
-          setModel(selectTranscriptionModel(language))
+          setPreferred(id)
         }}
       />
-      <div className="flex flex-wrap items-center gap-3 text-sm">
+      {model && <div className="flex items-center gap-3 text-sm">
         {downloaded ? <span role="status">{t('modelDownloaded')}</span> : (
           <Button variant="outline" onClick={() => void download()} disabled={progress !== null}>
             {t('downloadModel')} · {Math.round(model.files[0].bytes / 1_000_000)} MB
           </Button>
         )}
-        {progress !== null ? <Progress className="max-w-48" value={progress * 100} aria-label={t('downloadModel')} /> : null}
-      </div>
+        {progress !== null ? <Progress className="min-w-0 flex-1" value={progress * 100} aria-label={t('downloadModel')} /> : null}
+      </div>}
       {error ? <p role="alert" className="text-sm text-destructive">{t('modelDownloadError')}</p> : null}
     </div>
   )

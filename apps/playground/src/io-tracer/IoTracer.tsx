@@ -31,11 +31,19 @@ const messages = {
   },
 }
 
-export function IoTracer({ sample }: { sample: boolean }) {
+type TracePlayback = { cursor: () => number | undefined; seek: (time: number) => void }
+
+export function IoTracer({ sample, playback }: { sample: boolean; playback?: TracePlayback }) {
   const mount = useRef<HTMLDivElement>(null)
+  const playbackRef = useRef(playback)
+  playbackRef.current = playback
   useEffect(() => {
     if (!mount.current) return
-    const app = createApp(TracePanel, { sample })
+    const app = createApp(TracePanel, {
+      sample,
+      playbackCursor: () => playbackRef.current?.cursor(),
+      seekPlayback: (time: number) => playbackRef.current?.seek(time),
+    })
     app.use(createI18n({ legacy: false, locale: 'zh-Hans', messages }))
     app.mount(mount.current)
     return () => app.unmount()

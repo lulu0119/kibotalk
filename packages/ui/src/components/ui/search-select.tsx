@@ -45,7 +45,7 @@ export function SearchSelect({
   }
 
   return (
-    <Popover open={open} onOpenChange={(next) => {
+    <Popover modal open={open} onOpenChange={(next) => {
       setOpen(next)
       setQuery('')
     }}>
@@ -65,9 +65,9 @@ export function SearchSelect({
       </PopoverTrigger>
       <PopoverContent
         align="start"
-        className="max-h-(--radix-popover-content-available-height) w-(--radix-popover-trigger-width) max-w-(--radix-popover-content-available-width) overflow-hidden p-0"
+        className="flex max-h-(--radix-popover-content-available-height) w-(--radix-popover-trigger-width) max-w-(--radix-popover-content-available-width) flex-col overflow-hidden p-0"
       >
-        <Command label={searchLabel}>
+        <Command label={searchLabel} className="h-auto min-h-0">
           <CommandInput aria-label={searchLabel} placeholder={searchLabel} value={query} onValueChange={setQuery} />
           <CommandList>
             {!offerCustom && <CommandEmpty>{emptyLabel}</CommandEmpty>}

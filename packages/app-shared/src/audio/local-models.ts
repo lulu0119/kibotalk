@@ -62,15 +62,26 @@ export const BUNDLED_MODEL_SCHEME = 'kibotalk-model'
 
 const MODEL_KEY = 'kibotalk.transcriptionModel'
 
-export function selectTranscriptionModel(language: AppLanguage): TranscriptionModel {
-  let preferred: string | null = null
+export const systemTranscriptionOption = { id: 'apple-speech', name: 'Apple Speech' } as const
+
+function preferredTranscriptionId(): string | null {
   try {
-    preferred = localStorage.getItem(MODEL_KEY)
+    return localStorage.getItem(MODEL_KEY)
   } catch {
-    // Browsers can disable local storage for this origin.
+    return null
   }
-  return transcriptionModels.find(({ id, languages }) => id === preferred && languages.includes(language))
-    ?? transcriptionModels[0]
+}
+
+export function selectTranscriptionOption(
+  language: AppLanguage,
+  systemLanguages: readonly AppLanguage[] = [],
+  preferred = preferredTranscriptionId(),
+): TranscriptionModel | typeof systemTranscriptionOption {
+  const model = transcriptionModels.find(({ id, languages }) => id === preferred && languages.includes(language))
+  if (model) return model
+  return (preferred === null || preferred === systemTranscriptionOption.id) && systemLanguages.includes(language)
+    ? systemTranscriptionOption
+    : transcriptionModels[0]
 }
 
 export function saveTranscriptionModel(id: string): void {

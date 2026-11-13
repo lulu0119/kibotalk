@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import { IPC_CHANNEL } from '../shared/ipc'
+import { APPLE_SPEECH_IPC, IPC_CHANNEL, supportsAppleSpeech } from '../shared/ipc'
 import type { KiboTalkDesktopApi } from '../shared/ipc'
 
 const api: KiboTalkDesktopApi = {
@@ -36,6 +36,15 @@ const api: KiboTalkDesktopApi = {
   systemAudio: {
     start: () => ipcRenderer.invoke(IPC_CHANNEL.systemAudioStart),
     stop: () => ipcRenderer.invoke(IPC_CHANNEL.systemAudioStop),
+  },
+  appleSpeechTransport: {
+    supportedSystem: supportsAppleSpeech(),
+    send: (message) => ipcRenderer.send(APPLE_SPEECH_IPC, message),
+    subscribe: (callback) => {
+      const listener = (_event: Electron.IpcRendererEvent, message: unknown) => callback(message)
+      ipcRenderer.on(APPLE_SPEECH_IPC, listener)
+      return () => ipcRenderer.off(APPLE_SPEECH_IPC, listener)
+    },
   },
   island: {
     getContentSide: () => ipcRenderer.invoke(IPC_CHANNEL.islandGetContentSide),

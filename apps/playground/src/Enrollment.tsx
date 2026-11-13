@@ -1,14 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
-import { EmbeddingSpeakerVerifier } from '@kibotalk/speaker'
+import { EmbeddingSpeakerVerifier, EnrollmentAudioError } from '@kibotalk/speaker'
 import type { Speaker } from '@kibotalk/conversation'
 import {
   Badge,
   Button,
+  Input,
   Separator,
   toast,
 } from '@kibotalk/ui'
 import {
   ArrowRightIcon,
+  ImportIcon,
   LoaderIcon,
   MicrophoneIcon,
   RestartIcon,
@@ -20,22 +22,13 @@ import {
   createWorkerEmbedAudio,
   PASSPHRASE_BY_LANG,
 } from '@kibotalk/app-shared'
+import { concatPcm, decodeMonoAudio } from './audio-file'
 import { useConfig } from './config-store'
 import { ThresholdSlider } from './components/ConfigFields'
 import { playgroundVoiceprint } from './local-settings'
 
 type Mode = 'enroll' | 'verify'
 type WizardStep = 'intro' | 'record' | 'done'
-
-function concatPcm(chunks: Float32Array[]): Float32Array {
-  const out = new Float32Array(chunks.reduce((n, c) => n + c.length, 0))
-  let offset = 0
-  for (const c of chunks) {
-    out.set(c, offset)
-    offset += c.length
-  }
-  return out
-}
 
 export default function Enrollment({
   onEnrolled,
@@ -46,7 +39,7 @@ export default function Enrollment({
 }) {
   const [step, setStep] = useState<WizardStep>('intro')
   const [recording, setRecording] = useState<Mode | null>(null)
-  const [working, setWorking] = useState(false)
+  const [working, setWorking] = useState<'saving' | 'busy' | null>(null)
   const [error, setError] = useState('')
   const [enrolled, setEnrolled] = useState(false)
   const [verifyView, setVerifyView] = useState<{ speaker: Speaker; similarity: number } | null>(null)
@@ -55,6 +48,7 @@ export default function Enrollment({
   const passphrase = PASSPHRASE_BY_LANG[conversationLang]
   const verifierRef = useRef<EmbeddingSpeakerVerifier | null>(null)
   const audioRef = useRef<AudioSource | null>(null)
+  const fileInput = useRef<HTMLInputElement>(null)
   const chunksRef = useRef<Float32Array[]>([])
 
   function verifier() {
@@ -98,15 +92,22 @@ export default function Enrollment({
     setError('')
     setVerifyView(null)
     chunksRef.current = []
+    setWorking('busy')
+    const audio = new AudioSource()
+    audioRef.current = audio
     try {
-      const audio = new AudioSource()
-      audioRef.current = audio
       await audio.start((chunk) => chunksRef.current.push(chunk))
+      if (audioRef.current !== audio) {
+        audio.stop()
+        return
+      }
       setRecording(mode)
     } catch (e) {
       fail((e as Error).message)
-      audioRef.current?.stop()
+      audio.stop()
       audioRef.current = null
+    } finally {
+      setWorking(null)
     }
   }
 
@@ -124,12 +125,18 @@ export default function Enrollment({
       return
     }
 
-    setWorking(true)
+    await processAudio(mode, () => pcm, passphrase)
+  }
+
+  async function processAudio(mode: Mode, read: () => Float32Array | Promise<Float32Array>, phrase = '') {
+    setError('')
+    setWorking(mode === 'enroll' ? 'saving' : 'busy')
     try {
+      const pcm = await read()
       const v = verifier()
       v.setThreshold(useConfig.getState().speakerThreshold)
       if (mode === 'enroll') {
-        await v.enroll((async function* () { yield pcm.buffer as ArrayBuffer })(), passphrase)
+        await v.enroll((async function* () { yield pcm.buffer as ArrayBuffer })(), phrase)
         setVerifyView(null)
         setEnrolled(true)
         setStep('done')
@@ -140,16 +147,20 @@ export default function Enrollment({
         const r = await v.verify(pcm.buffer as ArrayBuffer, embedding)
         setVerifyView({ speaker: r.speaker, similarity: r.similarity })
       }
-    } catch (e) {
-      fail((e as Error).message)
+    } catch (cause) {
+      if (cause instanceof EnrollmentAudioError) {
+        fail(cause.code === 'too-short' ? '请提供至少 2.5 秒清晰的单人语音。' : '音频中的人声太轻，请换一段清晰的单人语音。')
+      } else {
+        fail(cause instanceof Error ? cause.message : String(cause))
+      }
     } finally {
-      setWorking(false)
+      setWorking(null)
     }
   }
 
   async function clearVoiceprint() {
     setError('')
-    setWorking(true)
+    setWorking('busy')
     try {
       await playgroundVoiceprint.clear()
       setEnrolled(false)
@@ -159,15 +170,34 @@ export default function Enrollment({
     } catch (cause) {
       fail(cause instanceof Error ? cause.message : String(cause))
     } finally {
-      setWorking(false)
+      setWorking(null)
     }
   }
 
-  const busy = !!recording || working
+  const busy = recording !== null || working !== null
+  const importButton = (
+    <Button variant="outline" onClick={() => fileInput.current?.click()} disabled={busy}>
+      <ImportIcon />
+      导入音频
+    </Button>
+  )
 
   return (
     <div className="space-y-5">
       <section className="space-y-3" aria-label="声纹录入">
+        <Input
+          ref={fileInput}
+          type="file"
+          accept="audio/*"
+          className="hidden"
+          aria-label="导入声纹音频"
+          disabled={busy}
+          onChange={(event) => {
+            const file = event.currentTarget.files?.[0]
+            event.currentTarget.value = ''
+            if (file) void processAudio('enroll', async () => (await decodeMonoAudio(file)).samples)
+          }}
+        />
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h3 className="text-sm font-semibold">声纹录入</h3>
           <Badge variant="secondary">{enrolled ? '已录入' : '未录入'}</Badge>
@@ -175,11 +205,14 @@ export default function Enrollment({
 
         {step === 'intro' && (
           <>
-            <p className="text-sm text-muted-foreground">朗读口令，帮助区分你和对方的声音。声纹仅保存在此设备。</p>
-            <Button onClick={() => setStep('record')}>
-              <MicrophoneIcon />
-              开始录入
-            </Button>
+            <p className="text-sm text-muted-foreground">用麦克风录音或导入一段单人语音。声纹仅保存在此设备。</p>
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={() => setStep('record')} disabled={busy}>
+                <MicrophoneIcon />
+                开始录入
+              </Button>
+              {importButton}
+            </div>
           </>
         )}
 
@@ -203,12 +236,6 @@ export default function Enrollment({
               )}
               <Button variant="outline" onClick={() => setStep(enrolled ? 'done' : 'intro')} disabled={busy}>取消</Button>
             </div>
-            {working && (
-              <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
-                <LoaderIcon className="size-4 animate-spin" />
-                正在保存声纹…
-              </p>
-            )}
           </>
         )}
 
@@ -224,11 +251,18 @@ export default function Enrollment({
               <RestartIcon />
               重新录制
             </Button>
+            {importButton}
             <Button variant="ghost" className="text-destructive hover:text-destructive" onClick={() => void clearVoiceprint()} disabled={busy}>
               <TrashBinTrashIcon />
               清除声纹
             </Button>
           </div>
+        )}
+        {working === 'saving' && (
+          <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
+            <LoaderIcon className="size-4 animate-spin" />
+            正在保存声纹…
+          </p>
         )}
       </section>
 

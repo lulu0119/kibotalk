@@ -1,6 +1,11 @@
 import { app, BrowserWindow, ipcMain } from 'electron'
+import { createContext } from '@moeru/eventa/adapters/electron/main'
+import { setupAppleSpeechTranscription } from '@xsai-apple-speech/transcription-electron-plugin/main'
+import { createAppleSpeechProvider } from '@xsai-apple-speech/transcription-native'
 import {
+  APPLE_SPEECH_IPC,
   IPC_CHANNEL,
+  supportsAppleSpeech,
   type DesktopSessionState,
   type IslandBarOffset,
   type IslandContentSide,
@@ -128,4 +133,8 @@ export function registerIpcHandlers(params: {
     event.returnValue = previousHistoryUserId()
   })
   registerReplyModelHandlers()
+  if (supportsAppleSpeech()) {
+    const eventa = createContext(ipcMain, undefined, { messageEventName: APPLE_SPEECH_IPC, errorEventName: false })
+    setupAppleSpeechTranscription({ context: eventa.context, provider: createAppleSpeechProvider() })
+  }
 }

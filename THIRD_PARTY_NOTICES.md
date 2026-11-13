@@ -9,6 +9,8 @@ the colors of the Line Duotone icons in its floating toolbar.
 ## Local speech models
 
 KiboTalk downloads pinned speech assets from the upstream publishers when needed.
+The macOS app includes [xsAI Apple Speech](https://github.com/moeru-ai/xsai-apple-speech),
+licensed under MIT. Its license is included in the app's resources.
 
 - [Silero VAD v5.1.2](https://github.com/snakers4/silero-vad/tree/v5.1.2) is licensed under MIT.
 - [CAM++ Chinese/English advanced](https://huggingface.co/moeru-ai/sherpaw-campplus-zh-en-advanced) is published by the 3D-Speaker team and packaged by Sherpaw under Apache 2.0.

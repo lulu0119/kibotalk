@@ -59,7 +59,7 @@
 
 产品界面做中 / 日 / 英三语。界面语言、对话语言、水平、音频来源、麦克风设备及声纹只可在 stopped / 无活跃会话时修改；新会话开始时冻结快照。主题、登录时启动和会话内 AI 建议开关不受该锁定约束。
 
-**模型按需下载**。Zipformer 默认覆盖中英日。首次设置时确认一个 ASR 模型再下载，之后可在设置查看支持语言、体积和下载状态，水平也在设置中调整。Web 启动时下载 Silero VAD 和 CAM++ 并按版本缓存。macOS 安装包内置这两个模型，开发版没有资源时使用同一下载缓存。
+**模型按需下载**。支持所选语言的 macOS 26+ 默认使用 Apple Speech，系统在首次转写时按需准备语言资源。Web 和系统转写不可用的 Mac 默认使用覆盖中英日的 Zipformer。用户可以在设置里切换转写方式，查看 Sherpaw 模型的语言、体积和下载状态。Web 启动时下载 Silero VAD 和 CAM++ 并按版本缓存。macOS 安装包内置这两个模型，开发版没有资源时使用同一下载缓存。
 
 **触发原则**：不再「仅对方轮次出候选」。任一 speaker 的 turn 入库后都进入教练请求；LLM 根据上下文判断本轮是否需要开口提示（见 F04）。
 ### 1.3 功能清单
@@ -231,7 +231,7 @@ type ReplyCandidate = {
 | 语音 Pipeline | `packages/pipeline` | [webai-example-realtime-voice-chat](https://github.com/proj-airi/webai-example-realtime-voice-chat)（VAD + STT，无 TTS） |
 | 提示词 | **Velin** `@velin-dev/core-react`（TSX） | [moeru-ai/velin](https://github.com/moeru-ai/velin) |
 | LLM | xsAI v1 + `@xsai-ext/providers` | 应用内配置端点和模型，见 §2.9 |
-| 语音推理 | Sherpaw | Silero v5 VAD、CAM++ 声纹、流式 Zipformer / X-ASR / Paraformer |
+| 语音推理 | Sherpaw、xsAI Apple Speech | Silero v5 VAD、CAM++ 声纹、流式 Zipformer / X-ASR / Paraformer、macOS 设备端转写 |
 | 调试追踪 | AIRI 的 trace-kit、stream-kit、timeline-canvas、ui-timeline 和 ui-trace | Playground |
 | Prompt 评估 | **vieval**（根目录 config + `evals/`） | [vieval-dev/vieval](https://github.com/vieval-dev/vieval) |
 | 移动 | **PWA**（`apps/web` 构建） | — |
@@ -545,8 +545,8 @@ packages/pipeline、speaker、llm、conversation  （真实实现）
 
 ### 2.8 本地语音
 
-Sherpaw 在 Worker 中进行 VAD 和流式识别。CAM++ 在独立 Worker 中提取声纹。
-语音模型按固定版本下载至 IndexedDB。音频不发送给回复模型。
+Sherpaw 在 Worker 中进行 VAD 和本地模型转写。使用 Apple Speech 时，桌面主进程通过 xsAI Apple Speech 接收每段语音的 PCM 并流式转写。CAM++ 在独立 Worker 中提取声纹。
+Sherpaw 模型按固定版本下载至 IndexedDB，Apple Speech 语言资源由 macOS 管理。音频不发送给回复模型。
 使用系统音轨与麦克风双路输入时，两个音轨各有独立 VAD 与识别流。
 
 ### 2.9 回复模型配置

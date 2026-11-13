@@ -59,9 +59,10 @@ Electron's system-backed storage.
 
 Transcription, voice activity detection, and speaker verification run on the device.
 Web starts caching Silero VAD and CAM++ when it opens. The macOS installer includes
-both models. During setup, choose one transcription model and download it while
-recording your voiceprint. Zipformer covers Chinese, English, and Japanese by default.
-Settings lists the supported languages, size, and download status of each model.
+both models. On supported Macs with macOS 26 or later, Apple Speech is the default.
+macOS prepares its language assets on first use if needed. Web and older Macs default to
+Zipformer, which covers Chinese, English, and Japanese. Settings lets you switch
+transcription options and shows each Sherpaw model's languages, size, and download status.
 Voiceprints from earlier builds require re-enrollment. Session history, transcripts,
 and saved suggestions stay in the same local database. Web history is tied to the
 browser profile and site origin.
