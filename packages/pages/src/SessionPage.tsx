@@ -1,11 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
-import type { ProductSessionController, SessionTurn } from '@kibotalk/app-shared'
-import {
-  languageLabel,
-  levelLabel,
-  shouldShowSessionError,
-  useI18n,
-} from '@kibotalk/app-shared'
+import { useEffect, useId, useState } from 'react'
+import type { ProductSessionController } from '@kibotalk/app-shared'
+import { languageLabel, shouldShowSessionError, useI18n } from '@kibotalk/app-shared'
 import {
   Button,
   Dialog,
@@ -16,12 +11,13 @@ import {
   DialogHeader,
   DialogTitle,
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-  ScrollArea,
   StickyNoteStack,
   Switch,
+  cn,
 } from '@kibotalk/ui'
 import {
   HistoryIcon,
@@ -33,6 +29,7 @@ import {
   SparklesIcon,
   StopIcon,
 } from '@kibotalk/ui/icons'
+import { SessionTranscript } from './SessionTranscript'
 
 export type SessionPageProps = {
   controller: ProductSessionController
@@ -41,283 +38,222 @@ export type SessionPageProps = {
 }
 
 function formatDuration(milliseconds: number): string {
-  const totalSeconds = Math.max(0, Math.floor(milliseconds / 1000))
-  const minutes = Math.floor(totalSeconds / 60)
-  const seconds = totalSeconds % 60
-  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+  const seconds = Math.max(0, Math.floor(milliseconds / 1000))
+  const minutes = Math.floor(seconds / 60)
+  return `${String(minutes).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`
 }
 
-function useSessionDuration(controller: ProductSessionController): number {
-  const [now, setNow] = useState(Date.now())
-  const { activeSession, lifecycle } = controller.session
+function useSessionDuration({ activeSession, lifecycle }: ProductSessionController['session']): number {
+  const [now, setNow] = useState(Date.now)
   useEffect(() => {
     if (lifecycle !== 'running') return
-    const timer = window.setInterval(() => setNow(Date.now()), 1000)
+    const tick = () => setNow(Date.now())
+    tick()
+    const timer = window.setInterval(tick, 1000)
     return () => window.clearInterval(timer)
   }, [lifecycle])
   if (!activeSession) return 0
   const end = activeSession.endedAt ?? (lifecycle === 'paused' ? activeSession.pausedAt ?? now : now)
-  return Math.max(0, end - activeSession.startedAt - activeSession.pausedDurationMs)
+  return end - activeSession.startedAt - activeSession.pausedDurationMs
 }
 
-function TurnBubble({ turn }: { turn: SessionTurn }) {
-  const { t } = useI18n()
-  const isUser = turn.speaker === 'user'
-  const time = new Intl.DateTimeFormat(undefined, {
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(turn.startedAt)
+function SessionToolbar({
+  controller,
+  onGoHistory,
+  onGoSettings,
+  onStop,
+}: SessionPageProps & { onStop: () => void }) {
+  const { t, language, prefs } = useI18n()
+  const { session, replyEnabled, setReplyEnabled } = controller
+  const { activeSession, lifecycle, loading } = session
+  const duration = useSessionDuration(session)
+  const running = lifecycle === 'running'
+  const paused = lifecycle === 'paused'
+  const active = running || paused
+  const busy = lifecycle === 'starting' || lifecycle === 'restoring'
+  const conversationLanguage = activeSession?.snapshot.conversationLang ?? prefs.conversationLang
+  let status = t('listening')
+  if (paused) status = t('paused')
+  if (lifecycle === 'stopped') status = t('stopped')
+  if (busy) status = t('preparing')
+
   return (
-    <li className={`flex gap-2.5 ${isUser ? 'flex-row-reverse' : ''}`}>
-      <div className={`max-w-[82%] ${isUser ? 'text-right' : ''}`}>
-        <div className="mb-1 text-[10.5px] font-bold text-muted-foreground">
-          {isUser ? t('me') : t('other')} · {time}
-        </div>
-        <div
-          className={`rounded-md px-3.5 py-2.5 text-left text-sm leading-relaxed ${
-            isUser ? 'rounded-tr-sm bg-accent' : 'rounded-tl-sm bg-foreground/5'
-          }`}
-        >
-          {turn.sttFailed ? t('sttFailed') : turn.text}
+    <header className="flex shrink-0 items-center justify-between gap-2 border-b border-border bg-card px-3 py-2.5 sm:gap-4 sm:px-5">
+      <div className="flex min-w-0 items-center gap-2.5">
+        <span
+          aria-hidden="true"
+          className={cn(
+            'size-2 shrink-0 rounded-full',
+            running && 'bg-emerald-500',
+            paused && 'bg-primary',
+            !active && 'bg-foreground/25',
+          )}
+        />
+        <div className="min-w-0">
+          <div role="status" className="truncate text-sm font-semibold">{status}</div>
+          <div className="truncate text-xs tabular-nums text-muted-foreground">
+            {languageLabel(conversationLanguage, language)}
+            {activeSession ? ` · ${formatDuration(duration)}` : null}
+          </div>
         </div>
       </div>
-    </li>
-  )
-}
 
-function statusLabel(controller: ProductSessionController, translate: ReturnType<typeof useI18n>['t']) {
-  const { lifecycle, loading } = controller.session
-  if (loading) return loading
-  if (lifecycle === 'paused') return translate('paused')
-  if (lifecycle === 'stopped') return translate('stopped')
-  if (lifecycle === 'restoring' || lifecycle === 'starting') return translate('preparing')
-  return translate('listening')
-}
-
-/**
- * Responsive A+B workbench: equal-height, independently scrolling transcript
- * and suggestion columns on desktop; one suggestion stage with a transcript
- * overlay on narrow screens.
- */
-export function SessionPage({ controller, onGoSettings, onGoHistory }: SessionPageProps) {
-  const { t, language } = useI18n()
-  const [transcriptOpen, setTranscriptOpen] = useState(() =>
-    window.matchMedia('(min-width: 640px)').matches,
-  )
-  const [stopDialogOpen, setStopDialogOpen] = useState(false)
-  const { session, rounds, replyEnabled, setReplyEnabled } = controller
-  const duration = useSessionDuration(controller)
-  const snapshot = session.activeSession?.snapshot
-  const latestTurn = session.turns.at(-1)
-  const currentTranscript = session.draft ?? latestTurn
-  let sessionError = ''
-  if (shouldShowSessionError(session.lifecycle, session.error)) {
-    switch (session.error) {
-      case 'VOICEPRINT_REQUIRED':
-        sessionError = t('voiceprintRequired')
-        break
-      case 'LLM_SETTINGS_REQUIRED':
-        sessionError = t('replyModelRequired')
-        break
-      case 'LLM_BROWSER_CONNECTION':
-        sessionError = t('replyModelBrowserError')
-        break
-      default:
-        sessionError = session.error
-    }
-  }
-  const transcriptItems = useMemo(() => session.turns, [session.turns])
-  const status = statusLabel(controller, t)
-  const active = session.lifecycle === 'running' || session.lifecycle === 'paused'
-
-  return (
-    <div className="session-workbench mx-auto flex h-dvh w-full max-w-[90rem] flex-col gap-3 overflow-hidden p-3 sm:gap-4 sm:p-5">
-      <header className="paper-sheet z-30 flex shrink-0 flex-wrap items-center justify-between gap-3 px-3 py-2.5 sm:px-4">
-        <div className="flex min-w-0 items-center gap-2.5">
-          <span
-            className={`size-2.5 shrink-0 rounded-full ${
-              session.lifecycle === 'running'
-                ? 'animate-pulse bg-emerald-500'
-                : session.lifecycle === 'paused'
-                  ? 'bg-yellow-500'
-                  : 'bg-foreground/25'
-            }`}
-          />
-          <div className="min-w-0">
-            <div className="truncate text-sm font-semibold">{status}</div>
-            {snapshot ? (
-              <div className="hidden text-[11px] text-muted-foreground sm:block">
-                {languageLabel(snapshot.conversationLang, language)} · {levelLabel(snapshot.level, language)} ·{' '}
-                {formatDuration(duration)}
-              </div>
-            ) : null}
-          </div>
-        </div>
-
-        <div className="flex items-center gap-1.5 sm:gap-2">
-          <label className="hidden items-center gap-2 rounded-full bg-foreground/5 px-3 py-2 text-xs font-semibold md:flex">
-            <SparklesIcon className="size-3.5" />
-            {t('aiSuggestions')}
-            <Switch
-              checked={replyEnabled}
-              onCheckedChange={setReplyEnabled}
-              aria-label={t('aiSuggestions')}
-            />
-          </label>
-
-          {session.lifecycle === 'running' ? (
+      <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+        {active ? (
+          <>
             <Button
-              variant="soft"
+              variant="outline"
               size="icon"
-              onClick={() => void session.pause()}
-              aria-label={t('pause')}
+              aria-label={t(running ? 'pause' : 'resume')}
+              title={t(running ? 'pause' : 'resume')}
+              onClick={() => running ? void session.pause() : void session.resume()}
             >
-              <PauseIcon className="size-4" />
+              {running ? <PauseIcon /> : <PlayIcon />}
             </Button>
-          ) : session.lifecycle === 'paused' ? (
-            <Button variant="soft" size="icon" onClick={() => void session.resume()} aria-label={t('resume')}>
-              <PlayIcon className="size-4" />
-            </Button>
-          ) : null}
-
-          {active ? (
-            <Button size="sm" onClick={() => setStopDialogOpen(true)}>
-              <StopIcon className="size-3.5" />
+            <Button variant="outline" aria-label={t('stop')} title={t('stop')} onClick={onStop} className="px-2.5 sm:px-4">
+              <StopIcon />
               <span className="hidden sm:inline">{t('stop')}</span>
             </Button>
-          ) : session.lifecycle === 'stopped' ? (
-            <Button size="sm" onClick={controller.requestSessionStart}>
-              <PlayIcon className="size-3.5" />
-              <span className="hidden sm:inline">{t('start')}</span>
+          </>
+        ) : (
+          <Button disabled={busy} aria-label={t('start')} title={loading || undefined} onClick={controller.requestSessionStart} className="px-2.5 sm:px-4">
+            <PlayIcon />
+            <span className="hidden min-[360px]:inline">{t('start')}</span>
+          </Button>
+        )}
+
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" aria-label={t('more')}>
+              <MenuDotsIcon />
             </Button>
-          ) : null}
-
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="soft" size="icon" aria-label={t('more')}>
-                <MenuDotsIcon className="size-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onSelect={() => setReplyEnabled((enabled) => !enabled)} className="md:hidden">
-                <SparklesIcon className="size-4" />
-                {t('aiSuggestions')}
-              </DropdownMenuItem>
-              {onGoHistory ? (
-                <DropdownMenuItem onSelect={onGoHistory}>
-                  <HistoryIcon className="size-4" />
-                  {t('history')}
-                </DropdownMenuItem>
-              ) : null}
-              {onGoSettings ? (
-                <DropdownMenuItem onSelect={onGoSettings}>
-                  <SettingsIcon className="size-4" />
-                  {t('settings')}
-                </DropdownMenuItem>
-              ) : null}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </header>
-
-      {session.recoveredUnexpectedPause ? (
-        <div className="shrink-0 rounded-md bg-accent px-3 py-2 text-xs text-accent-foreground">
-          {t('activeSessionRecovered')}
-        </div>
-      ) : null}
-      {sessionError ? (
-        <div role="alert" className="shrink-0 rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
-          {sessionError}
-        </div>
-      ) : null}
-
-      {currentTranscript ? (
-        <div className="glass-transcript shrink-0 px-3.5 py-2 text-sm" aria-live="polite">
-          <strong className="mr-2 text-[11px] text-muted-foreground">
-            {currentTranscript.speaker === 'user' ? t('me') : t('other')}
-          </strong>
-          {'sttFailed' in currentTranscript && currentTranscript.sttFailed
-            ? t('sttFailed')
-            : currentTranscript.text || '…'}
-        </div>
-      ) : null}
-
-      <div
-        className={`relative grid min-h-0 flex-1 gap-4 ${
-          transcriptOpen ? 'sm:grid-cols-[20rem_minmax(0,1fr)]' : 'grid-cols-1'
-        }`}
-      >
-        {transcriptOpen ? (
-          <aside className="paper-sheet absolute inset-0 z-20 flex min-h-0 flex-col overflow-hidden sm:static sm:z-auto">
-            <div className="flex shrink-0 items-center justify-between border-b border-border px-4 py-3">
-              <div>
-                <h2 className="text-sm font-bold">{t('conversationHistory')}</h2>
-                <p className="mt-0.5 text-[11px] text-muted-foreground">
-                  {t('currentSession')} · {transcriptItems.length}
-                </p>
-              </div>
-              <Button
-                variant="default"
-                size="sm"
-                className="sm:hidden"
-                aria-expanded
-                onClick={() => setTranscriptOpen(false)}
-              >
-                <PanelLeftIcon className="size-4" />
-                {t('conversationHistory')}
-              </Button>
-            </div>
-            <ScrollArea className="min-h-0 flex-1">
-              {transcriptItems.length === 0 && !session.draft ? (
-                <div className="flex min-h-48 items-center justify-center px-5 text-sm text-muted-foreground">
-                  {t('noTranscript')}
-                </div>
-              ) : (
-                <ol className="space-y-3 p-4">
-                  {transcriptItems.map((turn) => (
-                    <TurnBubble key={turn.id} turn={turn} />
-                  ))}
-                  {session.draft ? (
-                    <li
-                      className={`flex ${session.draft.speaker === 'user' ? 'justify-end' : 'justify-start'}`}
-                    >
-                      <div className="max-w-[82%] rounded-md border border-dashed border-border px-3.5 py-2.5 text-sm opacity-70">
-                        {session.draft.text || '…'}
-                      </div>
-                    </li>
-                  ) : null}
-                </ol>
-              )}
-            </ScrollArea>
-          </aside>
-        ) : null}
-
-        <main className="web-suggestion-stage paper-sheet flex min-h-0 flex-col overflow-hidden p-3 sm:p-5">
-          <div className="flex shrink-0 items-center justify-between gap-3 pb-3">
-            <div>
-              <h1 className="text-base font-bold sm:text-lg">{t('suggestions')}</h1>
-              <p className="hidden text-xs text-muted-foreground sm:block">{t('emptySuggestions')}</p>
-            </div>
-            <Button
-              variant={transcriptOpen ? 'default' : 'soft'}
-              size="sm"
-              aria-expanded={transcriptOpen}
-              onClick={() => setTranscriptOpen((open) => !open)}
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuCheckboxItem
+              className="sm:hidden"
+              checked={replyEnabled}
+              onCheckedChange={setReplyEnabled}
             >
-              <PanelLeftIcon className="size-4" />
-              {t('conversationHistory')}
-            </Button>
-          </div>
+              {t('aiSuggestions')}
+            </DropdownMenuCheckboxItem>
+            {onGoHistory ? (
+              <DropdownMenuItem onSelect={onGoHistory}>
+                <HistoryIcon />
+                {t('history')}
+              </DropdownMenuItem>
+            ) : null}
+            {onGoSettings ? (
+              <DropdownMenuItem onSelect={onGoSettings}>
+                <SettingsIcon />
+                {t('settings')}
+              </DropdownMenuItem>
+            ) : null}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    </header>
+  )
+}
+
+function sessionErrorMessage(session: ProductSessionController['session'], t: ReturnType<typeof useI18n>['t']) {
+  if (!shouldShowSessionError(session.lifecycle, session.error)) return ''
+  switch (session.error) {
+    case 'VOICEPRINT_REQUIRED': return t('voiceprintRequired')
+    case 'LLM_SETTINGS_REQUIRED': return t('replyModelRequired')
+    case 'LLM_BROWSER_CONNECTION': return t('replyModelBrowserError')
+    default: return session.error
+  }
+}
+
+export function SessionPage({ controller, onGoSettings, onGoHistory }: SessionPageProps) {
+  const { t } = useI18n()
+  const transcriptId = useId()
+  const [showTranscript, setShowTranscript] = useState(false)
+  const [stopDialogOpen, setStopDialogOpen] = useState(false)
+  const { session, rounds, replyEnabled, setReplyEnabled } = controller
+  const streaming = replyEnabled && session.state === 'LLM_STREAMING'
+  const sessionError = sessionErrorMessage(session, t)
+  const ready = session.lifecycle === 'stopped' && rounds.length === 0
+  let emptyHint = t('emptySuggestions')
+  if (!replyEnabled) emptyHint = t('suggestionsPaused')
+  else if (ready) emptyHint = t('emptySuggestionsBeforeSession')
+
+  return (
+    <div className="session-workbench mx-auto flex h-dvh w-full max-w-7xl flex-col overflow-hidden">
+      <SessionToolbar
+        controller={controller}
+        onGoHistory={onGoHistory}
+        onGoSettings={onGoSettings}
+        onStop={() => setStopDialogOpen(true)}
+      />
+
+      {session.loading || sessionError || session.recoveredUnexpectedPause ? (
+        <div className="shrink-0 space-y-1 border-b border-border bg-card px-3 py-2 text-xs sm:px-5">
+          {session.loading ? <p role="status" className="text-muted-foreground">{session.loading}</p> : null}
+          {sessionError ? <p role="alert" className="text-destructive wrap-anywhere">{sessionError}</p> : null}
+          {session.recoveredUnexpectedPause ? <p role="status" className="text-muted-foreground">{t('activeSessionRecovered')}</p> : null}
+        </div>
+      ) : null}
+
+      <div className="grid shrink-0 grid-cols-2 gap-1 border-b border-border bg-card px-3 py-2 sm:hidden">
+        <Button
+          variant={showTranscript ? 'ghost' : 'secondary'}
+          size="sm"
+          aria-pressed={!showTranscript}
+          onClick={() => setShowTranscript(false)}
+        >
+          <SparklesIcon />
+          {t('suggestions')}
+        </Button>
+        <Button
+          variant={showTranscript ? 'secondary' : 'ghost'}
+          size="sm"
+          aria-pressed={showTranscript}
+          aria-controls={transcriptId}
+          onClick={() => setShowTranscript(true)}
+        >
+          <PanelLeftIcon />
+          {t('conversationHistory')}
+        </Button>
+      </div>
+
+      <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)] gap-3 p-3 sm:grid-cols-[minmax(0,3fr)_minmax(14rem,2fr)] sm:gap-4 sm:p-4 md:grid-cols-[minmax(0,2fr)_minmax(15rem,1fr)] lg:gap-5 lg:p-5">
+        <main className={cn(
+          'web-suggestion-stage min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border border-border bg-card',
+          showTranscript ? 'hidden sm:flex' : 'flex',
+        )}>
+          <header className="flex min-h-14 shrink-0 items-center justify-between gap-2 border-b border-border px-4">
+            <h1 className="truncate text-base font-semibold">{t('suggestions')}</h1>
+            <div className="flex shrink-0 items-center gap-2">
+              {streaming && rounds.length > 0 ? (
+                <span role="status" className="text-xs text-muted-foreground">{t('generatingSuggestions')}</span>
+              ) : null}
+              <Switch
+                className="hidden sm:inline-flex"
+                checked={replyEnabled}
+                onCheckedChange={setReplyEnabled}
+                aria-label={t('aiSuggestions')}
+                title={t('aiSuggestions')}
+              />
+            </div>
+          </header>
           <StickyNoteStack
             className="min-h-0 flex-1"
             rounds={rounds}
             maxRounds={3}
-            streaming={session.state === 'LLM_STREAMING'}
-            emptyHint={t('emptySuggestions')}
+            streaming={streaming}
+            emptyHint={emptyHint}
             generatingLabel={t('generatingSuggestions')}
             previousRoundLabel={t('previousRound')}
           />
         </main>
+        <SessionTranscript
+          key={session.activeSession?.id}
+          id={transcriptId}
+          turns={session.turns}
+          draft={session.draft}
+          visible={showTranscript}
+        />
       </div>
 
       <Dialog open={stopDialogOpen} onOpenChange={setStopDialogOpen}>
