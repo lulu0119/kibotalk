@@ -4,6 +4,7 @@ import {
   emptyLlmSettings,
   readLlmSettings,
   streamReplyText,
+  testReplyModel,
   type ReplyModelHost,
   type ReplyTextStream,
 } from '@kibotalk/llm'
@@ -14,6 +15,23 @@ export type SessionLanguageSnapshot = {
   conversationLang: AppLanguage
   meaningLang: AppLanguage
   level: LearnerLevel
+}
+
+function browserReplyConnection(signal: AbortSignal) {
+  let connectionFailed = false
+  return {
+    fetcher: (async (...args) => {
+      try {
+        return await fetch(...args)
+      } catch (cause) {
+        connectionFailed = cause instanceof TypeError
+        throw cause
+      }
+    }) satisfies typeof fetch,
+    error(cause: unknown) {
+      return connectionFailed && !signal.aborted ? new Error('LLM_BROWSER_CONNECTION', { cause }) : cause
+    },
+  }
 }
 
 export function createBrowserReplyModel(settingsKey: string): ReplyModelHost {
@@ -34,20 +52,20 @@ export function createBrowserReplyModel(settingsKey: string): ReplyModelHost {
     settings,
     async *stream(input, signal) {
       const config = await settings.load()
-      let connectionFailed = false
-      const browserFetch: typeof fetch = async (...args) => {
-        try {
-          return await fetch(...args)
-        } catch (cause) {
-          connectionFailed = cause instanceof TypeError && !signal.aborted
-          throw cause
-        }
-      }
+      const connection = browserReplyConnection(signal)
       try {
-        yield* streamReplyText(config, input, signal, browserFetch)
+        yield* streamReplyText(config, input, signal, connection.fetcher)
       } catch (cause) {
-        if (connectionFailed && !signal.aborted) throw new Error('LLM_BROWSER_CONNECTION', { cause })
-        throw cause
+        throw connection.error(cause)
+      }
+    },
+    async test(config) {
+      const signal = AbortSignal.timeout(15000)
+      const connection = browserReplyConnection(signal)
+      try {
+        await testReplyModel(config, signal, connection.fetcher)
+      } catch (cause) {
+        throw connection.error(cause)
       }
     },
   }

@@ -1,6 +1,7 @@
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { BrowserWindow } from 'electron'
+import { BrowserWindow, screen, type WebContents } from 'electron'
+import type { OnboardingDownloadProgress } from '@kibotalk/pages'
 import {
   IPC_CHANNEL,
   type OnboardingContentSize,
@@ -12,14 +13,18 @@ import { embeddedWindowConfig, protectPrivilegedWindowNavigation } from './share
 /** Matches `--background` (light theme) in `packages/ui/src/theme.css` — the window's initial paint before the renderer's own CSS loads. */
 const ONBOARDING_BACKGROUND = '#fafafa'
 
-const ONBOARDING_WIDTH = 480
+const ONBOARDING_WIDTH = 840
 const ONBOARDING_MIN_WIDTH = 400
 /** Floor only — real height comes from renderer `onboarding:resize` once content lays out. */
 const ONBOARDING_MIN_HEIGHT = 160
 
 const mainDirname = dirname(fileURLToPath(import.meta.url))
+const preload = join(mainDirname, '../preload/index.mjs')
 
 let onboardingWindow: BrowserWindow | null = null
+let downloadWindow: BrowserWindow | undefined
+let downloadProgress: OnboardingDownloadProgress = null
+let downloadReady = false
 let requestedView: ProductWindowView = 'settings'
 
 export function getRequestedProductView(): ProductWindowView {
@@ -27,9 +32,7 @@ export function getRequestedProductView(): ProductWindowView {
 }
 
 /**
- * Onboarding / settings window — first-run language + voiceprint, later
- * reused from Island「设置」. Height is content-driven via
- * `resizeOnboardingWindow`.
+ * Reused for Settings after onboarding. The renderer reports the content height.
  */
 export async function openOnboardingWindow(view: ProductWindowView = 'settings'): Promise<BrowserWindow> {
   requestedView = view
@@ -50,15 +53,20 @@ export async function openOnboardingWindow(view: ProductWindowView = 'settings')
     resizable: true,
     ...embeddedWindowConfig(ONBOARDING_BACKGROUND),
     webPreferences: {
-      preload: join(mainDirname, '../preload/index.mjs'),
+      preload,
       sandbox: false,
     },
   })
 
   window.on('ready-to-show', () => window.show())
   protectPrivilegedWindowNavigation(window)
+  window.on('move', positionDownloadWindow)
+  window.on('minimize', () => downloadWindow?.hide())
+  window.on('restore', syncDownloadWindow)
   window.on('closed', () => {
     onboardingWindow = null
+    downloadProgress = null
+    downloadWindow?.destroy()
   })
 
   onboardingWindow = window
@@ -70,6 +78,63 @@ export async function openOnboardingWindow(view: ProductWindowView = 'settings')
   }
   window.webContents.send(IPC_CHANNEL.onboardingViewRequestedEvent, requestedView)
   return window
+}
+
+function positionDownloadWindow() {
+  if (!onboardingWindow || !downloadWindow) return
+  const { x, y, width } = screen.getDisplayMatching(onboardingWindow.getBounds()).workArea
+  downloadWindow.setPosition(x + width - downloadWindow.getBounds().width - 16, y + 16)
+}
+
+function syncDownloadWindow() {
+  if (!downloadWindow || !downloadReady) return
+  if (!downloadProgress || onboardingWindow?.isMinimized()) {
+    downloadWindow.hide()
+    return
+  }
+  positionDownloadWindow()
+  downloadWindow.webContents.send(IPC_CHANNEL.onboardingDownloadProgress, downloadProgress)
+  if (!downloadWindow.isVisible()) downloadWindow.showInactive()
+}
+
+export function markOnboardingDownloadReady(sender: WebContents): void {
+  if (sender !== downloadWindow?.webContents) return
+  downloadReady = true
+  syncDownloadWindow()
+}
+
+export function updateOnboardingDownloadProgress(sender: WebContents, progress: OnboardingDownloadProgress): void {
+  if (sender !== onboardingWindow?.webContents) return
+  downloadProgress = progress
+  if (downloadWindow) {
+    syncDownloadWindow()
+    return
+  }
+  if (!progress) return
+
+  const window = new BrowserWindow({
+    width: 160,
+    height: 34,
+    frame: false,
+    transparent: true,
+    hasShadow: false,
+    resizable: false,
+    focusable: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    show: false,
+    webPreferences: { preload, sandbox: false },
+  })
+  downloadWindow = window
+  window.on('closed', () => {
+    downloadWindow = undefined
+    downloadReady = false
+  })
+  window.setIgnoreMouseEvents(true)
+  protectPrivilegedWindowNavigation(window)
+  void loadRendererEntry(window, 'onboarding', 'download-progress').catch(() => {
+    if (!window.isDestroyed()) window.destroy()
+  })
 }
 
 /** Applies renderer-measured content size. */

@@ -1,11 +1,12 @@
 <script setup lang="ts">
+import brandWordmark from '../../../packages/ui/src/marketing/kibotalk-wordmark.svg'
 import LanguageMarquee from './LanguageMarquee.vue'
 </script>
 
 <template>
   <div class="cover-page">
     <header class="cover-header">
-      <img class="cover-wordmark" src="/assets/kibotalk-wordmark.svg" alt="KiboTalk" />
+      <img class="cover-wordmark" :src="brandWordmark" alt="KiboTalk" />
       <span class="cover-cta">立即体验</span>
     </header>
 

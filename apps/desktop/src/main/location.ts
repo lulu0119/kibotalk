@@ -11,10 +11,12 @@ const mainDirname = dirname(fileURLToPath(import.meta.url))
  * — dev server URL when running under `electron-vite dev`, built file
  * otherwise.
  */
-export async function loadRendererEntry(window: BrowserWindow, entry: string): Promise<void> {
+export async function loadRendererEntry(window: BrowserWindow, entry: string, hash?: string): Promise<void> {
   if (is.dev && process.env.ELECTRON_RENDERER_URL) {
-    await window.loadURL(`${process.env.ELECTRON_RENDERER_URL}/${entry}.html`)
+    const url = new URL(`${entry}.html`, process.env.ELECTRON_RENDERER_URL)
+    if (hash) url.hash = hash
+    await window.loadURL(url.href)
     return
   }
-  await window.loadFile(join(mainDirname, `../renderer/${entry}.html`))
+  await window.loadFile(join(mainDirname, `../renderer/${entry}.html`), { hash })
 }

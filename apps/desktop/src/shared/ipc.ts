@@ -1,4 +1,5 @@
-import type { ChatMessage, LlmSettingsStore, ReplyStreamMessage } from '@kibotalk/llm'
+import type { ChatMessage, LlmSettingsStore, ReplyModelHost, ReplyStreamMessage } from '@kibotalk/llm'
+import type { OnboardingDownloadProgress } from '@kibotalk/pages'
 
 /**
  * IPC channel names + payload/result types shared by main, preload, and
@@ -35,6 +36,8 @@ export const IPC_CHANNEL = {
   onboardingComplete: 'onboarding:complete',
   onboardingCompletedEvent: 'onboarding:completed',
   onboardingResize: 'onboarding:resize',
+  onboardingDownloadProgress: 'onboarding:download-progress',
+  onboardingDownloadReady: 'onboarding:download-ready',
   onboardingClose: 'onboarding:close',
   onboardingViewRequestedEvent: 'onboarding:view-requested',
   permissionsCheckMicrophone: 'permissions:check-microphone',
@@ -55,6 +58,7 @@ export const IPC_CHANNEL = {
   sessionCommandEvent: 'session:command',
   replyModelLoad: 'reply-model:load',
   replyModelSave: 'reply-model:save',
+  replyModelTest: 'reply-model:test',
   replyModelStream: 'reply-model:stream',
   appPreviousHistoryUserId: 'app:previous-history-user-id',
   appSetLaunchAtLogin: 'app:set-launch-at-login',
@@ -76,6 +80,9 @@ export type KiboTalkDesktopApi = {
     open: (view?: ProductWindowView) => Promise<void>
     complete: () => Promise<void>
     resize: (size: OnboardingContentSize) => Promise<void>
+    updateDownloadProgress: (progress: OnboardingDownloadProgress) => void
+    downloadReady: () => void
+    onDownloadProgress: (callback: (progress: OnboardingDownloadProgress) => void) => () => void
     close: () => Promise<void>
     onCompleted: (callback: () => void) => () => void
     onViewRequested: (callback: (view: ProductWindowView) => void) => () => void
@@ -109,6 +116,7 @@ export type KiboTalkDesktopApi = {
     onCommand: (callback: (command: DesktopSessionCommand) => void) => () => void
   }
   replyModel: LlmSettingsStore & {
+    test: ReplyModelHost['test']
     stream: (input: ChatMessage[], onMessage: (message: ReplyStreamMessage) => void) => () => void
   }
   app: {

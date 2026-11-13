@@ -20,6 +20,11 @@ import type {
   ProductWindowView,
 } from '../shared/ipc'
 
+const desktopReplyModel = {
+  settings: window.kibotalk.replyModel,
+  test: window.kibotalk.replyModel.test,
+}
+
 type Gate = 'booting' | 'setup' | 'product'
 
 function DesktopWindowContent({
@@ -192,6 +197,8 @@ function DesktopWindowContent({
       embedded
       prefs={prefs}
       enrolled={!!enrolled}
+      replyModel={desktopReplyModel}
+      onDownloadProgress={window.kibotalk.onboarding.updateDownloadProgress}
       requestMicrophone={window.kibotalk.permissions.requestMicrophone}
       onPrefsChange={onPrefsChange}
       onComplete={() => {

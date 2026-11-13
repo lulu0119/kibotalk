@@ -34,6 +34,7 @@ export type ReplyTextStream = (input: ChatMessage[], signal: AbortSignal) => Asy
 export type ReplyModelHost = {
   settings: LlmSettingsStore
   stream: ReplyTextStream
+  test: (settings: LlmSettings) => Promise<void>
 }
 
 export type ReplyStreamMessage =
@@ -61,6 +62,7 @@ export async function* streamReplyText(
   input: ChatMessage[],
   signal: AbortSignal,
   fetcher?: typeof fetch,
+  maxOutputTokens?: number,
 ): AsyncGenerator<string> {
   if (!settings.baseURL || !settings.model) throw new Error('LLM_SETTINGS_REQUIRED')
   const url = new URL(settings.baseURL)
@@ -77,6 +79,7 @@ export async function* streamReplyText(
   const stream = streamText(model, {
     input,
     signal,
+    maxOutputTokens,
     ...(settings.providerId === 'deepseek' && settings.protocol === 'chat'
       ? { extraBody: { thinking: { type: 'disabled' } } }
       : {}),
@@ -93,4 +96,16 @@ export async function* streamReplyText(
     await reader.cancel().catch(() => {})
     reader.releaseLock()
   }
+}
+
+export async function testReplyModel(
+  settings: LlmSettings,
+  signal = AbortSignal.timeout(15000),
+  fetcher?: typeof fetch,
+): Promise<void> {
+  const input: ChatMessage[] = [{ role: 'user', content: 'Reply with OK.' }]
+  for await (const text of streamReplyText(readLlmSettings(settings), input, signal, fetcher, 128)) {
+    if (text.trim()) return
+  }
+  throw new Error('LLM_EMPTY_RESPONSE')
 }

@@ -5,6 +5,7 @@ import {
   emptyLlmSettings,
   readLlmSettings,
   streamReplyText,
+  testReplyModel,
   type ChatMessage,
   type LlmSettings,
   type ReplyStreamMessage,
@@ -54,6 +55,10 @@ export function registerReplyModelHandlers(): void {
   ipcMain.handle(IPC_CHANNEL.replyModelSave, (event, settings: LlmSettings) => {
     requireMainFrame(event)
     saveSettings(settings)
+  })
+  ipcMain.handle(IPC_CHANNEL.replyModelTest, (event, settings: LlmSettings) => {
+    requireMainFrame(event)
+    return testReplyModel(settings)
   })
   ipcMain.on(IPC_CHANNEL.replyModelStream, (event, input: ChatMessage[]) => {
     const [port] = event.ports

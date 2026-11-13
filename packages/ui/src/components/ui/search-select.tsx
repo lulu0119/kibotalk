@@ -88,12 +88,12 @@ export function SearchSelect({
                   {option.value === value ? <CheckIcon /> : null}
                 </CommandItem>
               ))}
-              {offerCustom ? (
-                <CommandItem value={`custom:${typedValue}`} forceMount onSelect={() => select(typedValue)}>
-                  <span className="wrap-anywhere">{customLabel(typedValue)}</span>
-                </CommandItem>
-              ) : null}
             </CommandGroup>
+            {offerCustom ? (
+              <CommandItem value={`custom:${typedValue}`} forceMount onSelect={() => select(typedValue)}>
+                <span className="wrap-anywhere">{customLabel(typedValue)}</span>
+              </CommandItem>
+            ) : null}
           </CommandList>
         </Command>
       </PopoverContent>

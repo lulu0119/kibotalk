@@ -1,0 +1,21 @@
+.onboarding-marquee .language-marquee {
+  --marquee-edge-fade: 2rem;
+  --marquee-font-size: 1.125rem;
+  --marquee-item-spacing: 1rem;
+  opacity: 0.5;
+}
+
+.onboarding-wordmark {
+  background: radial-gradient(ellipse at center, var(--accent), transparent 68%);
+}
+
+.dark .onboarding-wordmark {
+  background: radial-gradient(ellipse at center, var(--background), transparent 68%);
+}
+
+@media (min-width: 48rem) {
+  .onboarding-marquee .language-marquee {
+    --marquee-font-size: 2rem;
+    --marquee-item-spacing: 1.5rem;
+  }
+}

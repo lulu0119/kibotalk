@@ -3,6 +3,7 @@ import {
   IPC_CHANNEL,
   type DesktopSessionState,
   type IslandBarOffset,
+  type IslandContentSide,
   type OnboardingContentSize,
   type ProductWindowView,
 } from '../shared/ipc'
@@ -19,11 +20,12 @@ import { previousHistoryUserId } from './legacy-history'
 import {
   closeOnboardingWindow,
   getRequestedProductView,
+  markOnboardingDownloadReady,
   openOnboardingWindow,
   resizeOnboardingWindow,
+  updateOnboardingDownloadProgress,
 } from './windows/onboarding'
 import { settleIslandContentSide } from './windows/island'
-import type { IslandContentSide } from '../shared/ipc'
 
 function isIslandBarOffset(value: unknown): value is IslandBarOffset {
   if (!value || typeof value !== 'object') return false
@@ -56,6 +58,12 @@ export function registerIpcHandlers(params: {
 
   ipcMain.handle(IPC_CHANNEL.onboardingResize, (_event, size: OnboardingContentSize) => {
     resizeOnboardingWindow(size)
+  })
+  ipcMain.on(IPC_CHANNEL.onboardingDownloadProgress, (event, progress) => {
+    updateOnboardingDownloadProgress(event.sender, progress)
+  })
+  ipcMain.on(IPC_CHANNEL.onboardingDownloadReady, (event) => {
+    markOnboardingDownloadReady(event.sender)
   })
 
   ipcMain.handle(IPC_CHANNEL.onboardingClose, () => {

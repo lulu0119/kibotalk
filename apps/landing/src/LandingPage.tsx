@@ -20,8 +20,8 @@ import {
   IslandToggleButton,
   StickyNoteCard,
 } from '@kibotalk/ui'
+import { brandWordmark, LanguageMarquee } from '@kibotalk/ui/marketing'
 import { copy, locales, type Locale } from './copy'
-import { HeroMarquee } from './HeroMarquee'
 
 const githubRepoUrl = 'https://github.com/lulu0119/kibotalk'
 const siteBase = import.meta.env.BASE_URL
@@ -76,7 +76,7 @@ function Header({ locale }: { locale: Locale }) {
         <a href={`${siteBase}${locale}/`} aria-label="KiboTalk">
           <img
             className="h-auto w-35 sm:w-40"
-            src={`${siteBase}assets/kibotalk-wordmark.svg`}
+            src={brandWordmark}
             alt="KiboTalk"
           />
         </a>
@@ -112,7 +112,12 @@ function Hero({ locale }: { locale: Locale }) {
 
   return (
     <section className="hero-section" aria-labelledby="hero-title">
-      <HeroMarquee pauseLabel={hero.pauseAnimation} resumeLabel={hero.resumeAnimation} />
+      <LanguageMarquee
+        pauseLabel={hero.pauseAnimation}
+        resumeLabel={hero.resumeAnimation}
+        className="hero-language-band"
+        controlsClassName="page-shell hero-marquee-controls"
+      />
       <div className="page-shell hero-copy">
         <h1 id="hero-title" className="hero-title hero-enter">
           <span>{hero.titleLead}</span>
@@ -277,7 +282,7 @@ function Footer({ locale }: { locale: Locale }) {
         <div>
           <img
             className="footer-wordmark"
-            src={`${siteBase}assets/kibotalk-wordmark.svg`}
+            src={brandWordmark}
             alt="KiboTalk"
           />
           <p>{footer.statement}</p>

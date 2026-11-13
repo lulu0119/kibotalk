@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react'
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import type { AppLanguage } from '@kibotalk/conversation'
 import {
   browserReplyModel,
@@ -8,19 +8,49 @@ import {
   selectTranscriptionModel,
   useI18n,
 } from '@kibotalk/app-shared'
-import { emptyLlmSettings, type LlmSettings, type LlmSettingsStore } from '@kibotalk/llm'
+import { emptyLlmSettings, readLlmSettings, type LlmSettings, type LlmSettingsStore, type ReplyModelHost } from '@kibotalk/llm'
 import {
-  Button, Input, Label, Progress, SearchSelect,
+  Button, Collapsible, CollapsibleContent, CollapsibleTrigger, Input, Label, Progress, SearchSelect,
 } from '@kibotalk/ui'
+import { AltArrowDownIcon, ArrowRightIcon, ArrowRightUpIcon, CheckIcon, MagnifierIcon, PlugCircleIcon } from '@kibotalk/ui/icons'
 import { availableTextProtocols, isTextProtocol, loadCatalog, route, type Provider } from '@kibotalk/llm/catalog'
+import { OnboardingActions, OnboardingSteps } from './OnboardingNavigation'
 import { TranscriptionModelPicker } from './TranscriptionModelPicker'
+
+const customProviderId = '__custom'
+const popularProviderIds = ['openai', 'anthropic', 'google', 'deepseek', 'openrouter']
+type SaveError = 'modelSettingsError' | 'replyModelTestFailed' | 'replyModelBrowserError'
+
+function ProviderLogo({ providerId }: { providerId?: string }) {
+  const [failed, setFailed] = useState(false)
+  return (
+    <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-foreground">
+      {providerId && !failed ? (
+        <img
+          className="size-5 object-contain dark:invert"
+          src={`https://models.dev/logos/${encodeURIComponent(providerId)}.svg`}
+          referrerPolicy="no-referrer"
+          onError={() => setFailed(true)}
+          alt=""
+        />
+      ) : <PlugCircleIcon className="size-5" />}
+    </span>
+  )
+}
 
 export function ReplyModelSettings({
   store = browserReplyModel.settings,
   onSaved,
+  onboarding,
 }: {
   store?: LlmSettingsStore
   onSaved?: () => void
+  onboarding?: {
+    onBack: () => void
+    test: ReplyModelHost['test']
+    returnToConfiguration?: boolean
+    downloadError?: ReactNode
+  }
 }) {
   const { t } = useI18n()
   const id = useId()
@@ -28,19 +58,28 @@ export function ReplyModelSettings({
   const [providers, setProviders] = useState<Provider[]>([])
   const [catalogStatus, setCatalogStatus] = useState<'loading' | 'ready' | 'error'>('loading')
   const [loaded, setLoaded] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const [result, setResult] = useState<'idle' | 'saved' | 'error'>('idle')
+  const [choosingProvider, setChoosingProvider] = useState(true)
+  const [selectedProviderId, setSelectedProviderId] = useState('')
+  const [query, setQuery] = useState('')
+  const [pending, setPending] = useState(false)
+  const [result, setResult] = useState<'saved' | SaveError>()
+  const activeSave = useRef<AbortController | null>(null)
+  const openSavedConfiguration = !onboarding || onboarding.returnToConfiguration === true
 
   useEffect(() => {
     let active = true
     void store.load().then((saved) => {
       if (!active) return
       setSettings(saved)
+      if (saved.providerId || saved.baseURL) {
+        setSelectedProviderId(saved.providerId || customProviderId)
+        setChoosingProvider(!openSavedConfiguration)
+      }
       setLoaded(true)
     }).catch(() => {
       if (!active) return
       setLoaded(true)
-      setResult('error')
+      setResult('modelSettingsError')
     })
     void loadCatalog().then((catalog) => {
       if (!active) return
@@ -49,22 +88,45 @@ export function ReplyModelSettings({
     }).catch(() => {
       if (active) setCatalogStatus('error')
     })
-    return () => { active = false }
-  }, [store])
+    return () => {
+      active = false
+      activeSave.current?.abort()
+    }
+  }, [store, openSavedConfiguration])
 
   function update(patch: Partial<LlmSettings>) {
     setSettings((previous) => ({ ...previous, ...patch }))
-    setResult('idle')
+    setResult(undefined)
   }
 
   const provider = providers.find((entry) => entry.id === settings.providerId)
+  const search = query.trim().toLowerCase()
+  const displayedProviders = search
+    ? providers.filter(({ id, name }) => `${name} ${id}`.toLowerCase().includes(search))
+    : popularProviderIds.map((providerId) => providers.find((entry) => entry.id === providerId))
+      .filter((entry) => entry !== undefined)
+  if (!search && provider && !displayedProviders.includes(provider)) displayedProviders.push(provider)
+  const options = displayedProviders.map(({ id, name }) => ({ id, name }))
+  if (!search && settings.providerId && !provider) {
+    options.push({ id: settings.providerId, name: settings.providerId })
+  }
+  const customProviderName = t('customProviderShort')
+  if (!search || `${t('customProvider')} custom openai-compatible`.toLowerCase().includes(search)) {
+    options.push({ id: customProviderId, name: customProviderName })
+  }
   const models = provider
     ? Object.values(provider.models).filter((model) => availableTextProtocols(provider, model).length)
     : []
 
-  function providerChanged(providerId: string) {
-    if (providerId === '__custom') {
-      update({ providerId: '', baseURL: '', model: '', protocol: 'chat', path: undefined, apiKey: '' })
+  function confirmProvider() {
+    const providerId = selectedProviderId
+    if (providerId === (settings.providerId || customProviderId) && (settings.model || settings.baseURL)) {
+      setChoosingProvider(false)
+      return
+    }
+    if (providerId === customProviderId) {
+      update({ ...emptyLlmSettings, path: undefined })
+      setChoosingProvider(false)
       return
     }
     const chosen = providers.find((entry) => entry.id === providerId)
@@ -74,9 +136,17 @@ export function ReplyModelSettings({
     const target = route(chosen, model.id, availableTextProtocols(chosen, model))
     if (!isTextProtocol(target.protocol)) return
     update({
-      providerId, model: target.model, baseURL: target.baseURL, protocol: target.protocol,
+      providerId, model: '', baseURL: target.baseURL, protocol: target.protocol,
       path: target.path, apiKey: '',
     })
+    setChoosingProvider(false)
+  }
+
+  function openProviderPicker() {
+    setSelectedProviderId(settings.providerId || customProviderId)
+    setQuery('')
+    setResult(undefined)
+    setChoosingProvider(true)
   }
 
   function modelChanged(modelId: string) {
@@ -92,7 +162,8 @@ export function ReplyModelSettings({
     }
     const target = route(provider, modelId, protocols)
     if (!isTextProtocol(target.protocol)) return
-    const previousURL = provider.models[settings.model]?.routes[settings.protocol]?.baseURL
+    const previousModel = provider.models[settings.model] ?? models[0]
+    const previousURL = previousModel?.routes[settings.protocol]?.baseURL
     update({
       model: modelId,
       protocol: target.protocol,
@@ -103,57 +174,142 @@ export function ReplyModelSettings({
   }
 
   async function save() {
-    setSaving(true)
+    if (activeSave.current) return
+    const operation = new AbortController()
+    activeSave.current = operation
+    setPending(true)
+    setResult(undefined)
+    let error: SaveError = 'modelSettingsError'
     try {
-      const url = new URL(settings.baseURL)
+      const draft = readLlmSettings(settings)
+      const url = new URL(draft.baseURL)
       if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) {
         throw new Error('Invalid URL')
       }
-      await store.save(settings)
+      if (onboarding) {
+        error = 'replyModelTestFailed'
+        await onboarding.test(draft)
+      }
+      if (operation.signal.aborted) return
+      error = 'modelSettingsError'
+      await store.save(draft)
+      if (operation.signal.aborted) return
       setResult('saved')
       onSaved?.()
-    } catch {
-      setResult('error')
+    } catch (cause) {
+      if (operation.signal.aborted) return
+      const browserConnection = error === 'replyModelTestFailed'
+        && cause instanceof Error && cause.message === 'LLM_BROWSER_CONNECTION'
+      setResult(browserConnection ? 'replyModelBrowserError' : error)
     } finally {
-      setSaving(false)
+      activeSave.current = null
+      if (!operation.signal.aborted) setPending(false)
     }
   }
 
+  const errorMessage = result && result !== 'saved' && (
+    <p role="alert" className="text-sm text-destructive">{t(result)}</p>
+  )
+  const layout = onboarding ? 'flex flex-1 flex-col gap-4' : 'space-y-4'
+  if (choosingProvider) {
+    const canContinue = loaded && options.some((option) => option.id === selectedProviderId)
+    const next = (
+      <Button type="button" disabled={!canContinue} onClick={confirmProvider}>
+        {t('nextStep')} <ArrowRightIcon />
+      </Button>
+    )
+    return (
+      <div className={layout}>
+        {onboarding && <OnboardingSteps step={2} />}
+        <h1 className={onboarding ? 'text-xl font-semibold' : 'sr-only'}>{t('chooseProvider')}</h1>
+        <div className="relative">
+          <MagnifierIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            type="search"
+            aria-label={t('searchProvider')}
+            placeholder={t('searchProvider')}
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            disabled={!loaded || catalogStatus !== 'ready'}
+            className="pl-9"
+          />
+        </div>
+        <div className="max-h-44 overflow-y-auto p-0.5" role="group" aria-label={t('chooseProvider')}>
+          <div className="grid grid-cols-2 gap-2.5">
+            {options.map((item) => (
+              <Button
+                key={item.id}
+                type="button"
+                variant="outline"
+                aria-pressed={item.id === selectedProviderId}
+                className="h-12 min-w-0 justify-start gap-1.5 px-2 text-left aria-pressed:border-primary aria-pressed:bg-primary/10 sm:gap-2 sm:px-2.5"
+                disabled={!loaded}
+                onClick={() => setSelectedProviderId(item.id)}
+              >
+                <ProviderLogo providerId={item.id === customProviderId ? undefined : item.id} />
+                <span className="truncate" title={item.name}>{item.name}</span>
+                {item.id === selectedProviderId && <CheckIcon className="ml-auto !size-3.5 text-foreground" />}
+              </Button>
+            ))}
+          </div>
+        </div>
+        {catalogStatus !== 'ready' && <p role="status" className="text-sm text-muted-foreground">
+          {t(catalogStatus === 'loading' ? 'providerCatalogLoading' : 'providerCatalogUnavailable')}
+        </p>}
+        {catalogStatus === 'ready' && !options.length && <p role="status" className="text-sm text-muted-foreground">{t('noModelMatches')}</p>}
+        {errorMessage}
+        {onboarding?.downloadError}
+        {onboarding ? <OnboardingActions onBack={onboarding.onBack}>{next}</OnboardingActions> : next}
+      </div>
+    )
+  }
+
+  const requiresKey = Boolean(provider?.apiKeyEnv?.length)
+  const requireKeyForSetup = Boolean(onboarding) && requiresKey
+  const canSubmit = !pending && settings.baseURL.trim() && settings.model.trim()
+    && (!requireKeyForSetup || settings.apiKey.trim())
+  const submitLabel = pending ? 'testingReplyModel' : 'nextStep'
+  const submit = (
+    <Button type="submit" disabled={!canSubmit}>
+      {t(onboarding ? submitLabel : 'saveModelSettings')}
+      {onboarding && !pending && <ArrowRightIcon />}
+    </Button>
+  )
+  const baseURL = (
+    <div className="grid gap-1.5">
+      <Label htmlFor={`${id}-url`}>Base URL</Label>
+      <Input id={`${id}-url`} type="url" value={settings.baseURL}
+        placeholder="http://localhost:11434/v1" required disabled={pending}
+        onChange={(event) => update({ baseURL: event.target.value })} />
+    </div>
+  )
+
   return (
-    <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); void save() }}>
-      <div className="grid gap-2">
-        <Label htmlFor={`${id}-provider`}>{t('provider')}</Label>
-        <SearchSelect
-          id={`${id}-provider`}
-          value={settings.providerId || '__custom'}
-          options={[
-            { value: '__custom', label: t('customProvider') },
-            ...providers.map((item) => ({ value: item.id, label: item.name })),
-          ]}
-          placeholder={t('provider')}
-          searchLabel={t('searchProvider')}
-          emptyLabel={t('noModelMatches')}
-          onChange={providerChanged}
-          disabled={!loaded || saving}
-        />
-        {catalogStatus !== 'ready' ? (
-          <p className="text-xs text-muted-foreground">
-            {t(catalogStatus === 'loading' ? 'providerCatalogLoading' : 'providerCatalogUnavailable')}
-          </p>
-        ) : null}
+    <form className={layout} onSubmit={(event) => { event.preventDefault(); void save() }}>
+      {onboarding && <OnboardingSteps step={3} />}
+      <div className="flex items-center gap-2.5">
+        <ProviderLogo key={settings.providerId} providerId={settings.providerId} />
+        <h1 className={onboarding ? 'min-w-0 flex-1 text-xl font-semibold' : 'min-w-0 flex-1 text-sm font-medium'}>
+          {provider?.name || settings.providerId || t('customProvider')}
+        </h1>
+        {!onboarding && <Button type="button" size="sm" variant="ghost" disabled={pending} onClick={openProviderPicker}>
+          {t('changeProvider')}
+        </Button>}
       </div>
-      <div className="grid gap-2">
-        <Label htmlFor={`${id}-url`}>Base URL</Label>
-        <Input id={`${id}-url`} type="url" value={settings.baseURL}
-          placeholder="http://localhost:11434/v1" required disabled={!loaded || saving}
-          onChange={(event) => update({ baseURL: event.target.value })} />
-      </div>
-      <div className="grid gap-2">
-        <Label htmlFor={`${id}-key`}>API Key <span className="text-muted-foreground">({t('optional')})</span></Label>
+      {(!onboarding || !provider) && baseURL}
+      <div className="grid gap-1.5">
+        <div className="flex items-center justify-between gap-2">
+          <Label htmlFor={`${id}-key`}>API Key {!requiresKey && <span className="text-muted-foreground">({t('optional')})</span>}</Label>
+          {provider?.doc && /^https?:\/\//i.test(provider.doc) && (
+            <a href={provider.doc} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground hover:underline">
+              {t('providerDocs')} <ArrowRightUpIcon className="size-3.5" />
+            </a>
+          )}
+        </div>
         <Input id={`${id}-key`} type="password" autoComplete="off" value={settings.apiKey}
-          disabled={!loaded || saving} onChange={(event) => update({ apiKey: event.target.value })} />
+          required={requireKeyForSetup} disabled={pending} onChange={(event) => update({ apiKey: event.target.value })} />
       </div>
-      <div className="grid gap-2">
+      <div className="grid gap-1.5">
         <Label htmlFor={`${id}-model`}>{t('model')}</Label>
         <SearchSelect
           id={`${id}-model`}
@@ -168,16 +324,29 @@ export function ReplyModelSettings({
           emptyLabel={t('noModelMatches')}
           customLabel={(value) => `${t('useCustomModel')} ${value}`}
           onChange={modelChanged}
-          disabled={!loaded || saving}
+          disabled={pending}
         />
       </div>
-      <div className="flex flex-wrap items-center gap-3">
-        <Button type="submit" disabled={!loaded || saving || !settings.baseURL.trim() || !settings.model.trim()}>
-          {t('saveModelSettings')}
-        </Button>
-        {result === 'saved' ? <span role="status" className="text-sm">{t('modelSettingsSaved')}</span> : null}
-        {result === 'error' ? <span role="alert" className="text-sm text-destructive">{t('modelSettingsError')}</span> : null}
-      </div>
+      {onboarding && provider && (
+        <Collapsible>
+          <CollapsibleTrigger asChild>
+            <Button type="button" size="sm" variant="ghost" disabled={pending} className="group -ml-3 text-muted-foreground">
+              {t('connectionSettings')} <AltArrowDownIcon className="group-data-[state=open]:rotate-180" />
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="pt-2">{baseURL}</CollapsibleContent>
+        </Collapsible>
+      )}
+      {errorMessage}
+      {onboarding?.downloadError}
+      {onboarding ? (
+        <OnboardingActions onBack={openProviderPicker} disabled={pending}>{submit}</OnboardingActions>
+      ) : (
+        <div className="flex flex-wrap items-center gap-3">
+          {submit}
+          {result === 'saved' && <span role="status" className="text-sm">{t('modelSettingsSaved')}</span>}
+        </div>
+      )}
     </form>
   )
 }

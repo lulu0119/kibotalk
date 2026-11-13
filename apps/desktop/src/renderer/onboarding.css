@@ -6,3 +6,8 @@
 
 @source "../../../../packages/ui/src";
 @source "../../../../packages/pages/src";
+
+[data-download-window],
+[data-download-window] body {
+  background: transparent;
+}

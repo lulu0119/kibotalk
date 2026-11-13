@@ -1,18 +1,22 @@
 import { useState, type CSSProperties } from 'react'
-import { Button } from '@kibotalk/ui'
-import { PauseIcon, PlayIcon } from '@kibotalk/ui/icons'
-import { languageMarqueeRows } from '../../../packages/ui/src/marketing/language-marquee'
-import '../../../packages/ui/src/marketing/language-marquee.css'
+import { Button } from '../components/ui/button'
+import { PauseIcon, PlayIcon } from '../icons'
+import { languageMarqueeRows } from './language-marquee'
+import './language-marquee.css'
 
-export function HeroMarquee({ pauseLabel, resumeLabel }: {
+export const brandWordmark = new URL('./kibotalk-wordmark.svg', import.meta.url).href
+
+export function LanguageMarquee({ pauseLabel, resumeLabel, className, controlsClassName }: {
   pauseLabel: string
   resumeLabel: string
+  className?: string
+  controlsClassName?: string
 }) {
   const [paused, setPaused] = useState(false)
   const label = paused ? resumeLabel : pauseLabel
 
   return (
-    <div className="hero-language-band">
+    <div className={className}>
       <div className="language-marquee" data-paused={paused} aria-hidden="true">
         {languageMarqueeRows.map(({ duration, reverse, opacity, items }) => (
           <div
@@ -30,12 +34,12 @@ export function HeroMarquee({ pauseLabel, resumeLabel }: {
           </div>
         ))}
       </div>
-      <div className="page-shell hero-marquee-controls">
+      <div className={controlsClassName}>
         <Button
           type="button"
           variant="outline"
           size="icon"
-          className="size-9 rounded-full"
+          className="size-9 rounded-full motion-reduce:hidden"
           onClick={() => setPaused(!paused)}
           title={label}
           aria-label={label}

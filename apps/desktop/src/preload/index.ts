@@ -8,6 +8,13 @@ const api: KiboTalkDesktopApi = {
     open: (view) => ipcRenderer.invoke(IPC_CHANNEL.onboardingOpen, view),
     complete: () => ipcRenderer.invoke(IPC_CHANNEL.onboardingComplete),
     resize: (size) => ipcRenderer.invoke(IPC_CHANNEL.onboardingResize, size),
+    updateDownloadProgress: (progress) => ipcRenderer.send(IPC_CHANNEL.onboardingDownloadProgress, progress),
+    downloadReady: () => ipcRenderer.send(IPC_CHANNEL.onboardingDownloadReady),
+    onDownloadProgress: (callback) => {
+      const listener = (_event: Electron.IpcRendererEvent, progress: Parameters<typeof callback>[0]) => callback(progress)
+      ipcRenderer.on(IPC_CHANNEL.onboardingDownloadProgress, listener)
+      return () => ipcRenderer.removeListener(IPC_CHANNEL.onboardingDownloadProgress, listener)
+    },
     close: () => ipcRenderer.invoke(IPC_CHANNEL.onboardingClose),
     onCompleted: (callback) => {
       const listener = () => callback()
@@ -59,6 +66,7 @@ const api: KiboTalkDesktopApi = {
   replyModel: {
     load: () => ipcRenderer.invoke(IPC_CHANNEL.replyModelLoad),
     save: (settings) => ipcRenderer.invoke(IPC_CHANNEL.replyModelSave, settings),
+    test: (settings) => ipcRenderer.invoke(IPC_CHANNEL.replyModelTest, settings),
     stream: (input, onMessage) => {
       const { port1, port2 } = new MessageChannel()
       port1.onmessage = ({ data }) => {
