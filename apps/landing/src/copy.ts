@@ -17,13 +17,12 @@ type LandingCopy = {
     top: string
   }
   hero: {
-    eyebrow: string
     titleLead: string
     titleMark: string
     statementLead: string
     statementStrong: string
-    tagline: string
-    macNote: string
+    pauseAnimation: string
+    resumeAnimation: string
   }
   scenes: {
     eyebrow: string
@@ -88,13 +87,12 @@ export const copy: Record<Locale, LandingCopy> = {
       top: '回到顶部',
     },
     hero: {
-      eyebrow: 'REAL LIFE, REAL VOICE',
       titleLead: '听懂了，',
       titleMark: '却答不上来？',
       statementLead: '翻译让你听懂，',
       statementStrong: 'KiboTalk 让你答得上来。',
-      tagline: 'AI 提示，你开口。',
-      macNote: 'Apple Silicon · macOS 13+',
+      pauseAnimation: '暂停滚动文字',
+      resumeAnimation: '继续滚动文字',
     },
     scenes: {
       eyebrow: 'REAL LIFE, REAL VOICE',
@@ -169,13 +167,12 @@ export const copy: Record<Locale, LandingCopy> = {
       top: 'ページ上部へ',
     },
     hero: {
-      eyebrow: 'REAL LIFE, REAL VOICE',
       titleLead: '聞き取れた。',
       titleMark: 'なのに、返せない？',
       statementLead: '翻訳は理解を助ける。',
       statementStrong: 'KiboTalkは返事を助ける。',
-      tagline: 'AIがヒントを。話すのは、あなた。',
-      macNote: 'Apple Silicon · macOS 13以降',
+      pauseAnimation: 'テキストのスクロールを一時停止',
+      resumeAnimation: 'テキストのスクロールを再開',
     },
     scenes: {
       eyebrow: 'REAL LIFE, REAL VOICE',
@@ -250,13 +247,12 @@ export const copy: Record<Locale, LandingCopy> = {
       top: 'Back to top',
     },
     hero: {
-      eyebrow: 'REAL LIFE, REAL VOICE',
       titleLead: 'You understood.',
       titleMark: "But couldn't reply?",
       statementLead: 'Translation helps you understand. ',
       statementStrong: 'KiboTalk helps you answer.',
-      tagline: 'AI gives the cue. You speak.',
-      macNote: 'Apple Silicon · macOS 13+',
+      pauseAnimation: 'Pause scrolling text',
+      resumeAnimation: 'Resume scrolling text',
     },
     scenes: {
       eyebrow: 'REAL LIFE, REAL VOICE',

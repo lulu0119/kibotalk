@@ -25,6 +25,7 @@ import {
   StickyNoteCard,
 } from '@kibotalk/ui'
 import { copy, locales, type Locale } from './copy'
+import { HeroMarquee } from './HeroMarquee'
 
 const githubRepoUrl = 'https://github.com/lulu0119/kibotalk'
 const siteBase = import.meta.env.BASE_URL
@@ -117,39 +118,35 @@ function Hero({ locale }: { locale: Locale }) {
   const { hero, actions } = copy[locale]
 
   return (
-    <section className="hero-section page-shell" aria-labelledby="hero-title">
-      <p className="section-kicker hero-enter">{hero.eyebrow}</p>
-      <h1 id="hero-title" className="hero-title hero-enter hero-enter-delay-1">
-        <span>{hero.titleLead}</span>
-        <mark>{hero.titleMark}</mark>
-      </h1>
-      <p className="hero-statement hero-enter hero-enter-delay-2">
-        {hero.statementLead}
-        <strong>{hero.statementStrong}</strong>
-      </p>
-      <p className="hero-tagline hero-enter hero-enter-delay-2">{hero.tagline}</p>
-
-      <div className="hero-actions hero-enter hero-enter-delay-3">
-        <div>
-          <Button asChild size="lg">
+    <section className="hero-section" aria-labelledby="hero-title">
+      <HeroMarquee pauseLabel={hero.pauseAnimation} resumeLabel={hero.resumeAnimation} />
+      <div className="page-shell hero-copy">
+        <h1 id="hero-title" className="hero-title hero-enter">
+          <span>{hero.titleLead}</span>
+          <mark>{hero.titleMark}</mark>
+        </h1>
+        <p className="hero-statement hero-enter hero-enter-delay-1">
+          {hero.statementLead}
+          <strong>{hero.statementStrong}</strong>
+        </p>
+        <div className="hero-actions hero-enter hero-enter-delay-2">
+          <Button asChild variant="outline" size="lg">
             <a href={webUrl}>
               {actions.web}
               <ArrowRightUpIcon aria-hidden />
             </a>
           </Button>
-        </div>
-        <div>
-          <Button asChild variant="soft" size="lg">
+          <Button asChild variant="outline" size="lg">
             <a href={macSetupUrl} target="_blank" rel="noreferrer">
-              <DownloadIcon aria-hidden />
               {actions.mac}
+              <ArrowRightUpIcon aria-hidden />
             </a>
           </Button>
-          <p>{hero.macNote}</p>
-        </div>
-        <div>
           <Button asChild variant="outline" size="lg">
-            <a href={playgroundUrl}>{actions.playground}</a>
+            <a href={playgroundUrl}>
+              {actions.playground}
+              <ArrowRightUpIcon aria-hidden />
+            </a>
           </Button>
         </div>
       </div>
