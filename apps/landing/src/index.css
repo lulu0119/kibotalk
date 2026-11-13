@@ -314,100 +314,6 @@ a {
   box-shadow: 0 1rem 2.2rem rgb(43 38 32 / 0.16);
 }
 
-.story-section {
-  padding-block: clamp(6rem, 12vw, 10rem);
-  background: var(--card);
-  border-block: 1px solid var(--border);
-}
-
-.story-heading {
-  max-width: 54rem;
-  margin-inline: auto;
-  text-align: center;
-}
-
-.story-heading .section-body {
-  margin-inline: auto;
-}
-
-.story-grid {
-  display: grid;
-  gap: 1.5rem;
-  margin-top: clamp(3rem, 6vw, 5rem);
-  max-width: 36rem;
-  margin-inline: auto;
-  grid-template-columns: minmax(0, 1fr);
-}
-
-.story-card {
-  min-height: 39rem;
-  border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-panel);
-}
-
-.story-card > div {
-  display: flex;
-  height: 100%;
-  flex-direction: column;
-  align-items: flex-start;
-  padding: clamp(1.5rem, 4vw, 2.5rem);
-}
-
-.production-card {
-  border-color: color-mix(in srgb, var(--primary) 70%, var(--border));
-}
-
-.story-card-topline {
-  display: flex;
-  width: 100%;
-  align-items: center;
-  justify-content: space-between;
-  color: var(--muted-foreground);
-  font-size: 0.78rem;
-  font-weight: 850;
-  letter-spacing: 0.1em;
-}
-
-.production-wordmark {
-  width: min(100%, 14rem);
-  height: 5.5rem;
-  margin-top: 2.5rem;
-  object-fit: contain;
-  object-position: left center;
-}
-
-.story-card h3 {
-  margin: 1.5rem 0 0;
-  color: var(--foreground);
-  font-size: clamp(1.7rem, 3vw, 2.35rem);
-  font-weight: 900;
-  letter-spacing: -0.035em;
-}
-
-.story-card > div > p {
-  margin: 0.8rem 0 0;
-  color: var(--muted-foreground);
-  font-size: 0.98rem;
-  font-weight: 520;
-  line-height: 1.75;
-}
-
-.capability-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.6rem;
-  margin: 1.8rem 0;
-}
-
-.capability-list svg {
-  width: 0.85rem;
-  height: 0.85rem;
-}
-
-.story-card > div > a:last-child {
-  margin-top: auto;
-}
-
 .mission-section {
   padding-block: clamp(6rem, 12vw, 10rem);
 }
@@ -584,18 +490,6 @@ a {
 
   .product-demo .sticky-note > ol > li > div:nth-child(2) {
     font-size: 0.75rem;
-  }
-
-  .story-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .story-card {
-    min-height: auto;
-  }
-
-  .story-card a {
-    width: 100%;
   }
 
   .mission-layout {

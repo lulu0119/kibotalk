@@ -7,7 +7,6 @@ type LandingCopy = {
   nav: {
     scenes: string
     product: string
-    story: string
     mission: string
   }
   actions: {
@@ -46,15 +45,6 @@ type LandingCopy = {
       reading?: string
     }>
   }
-  story: {
-    eyebrow: string
-    title: string
-    body: string
-    productionLabel: string
-    productionTitle: string
-    productionBody: string
-    capabilities: string[]
-  }
   mission: {
     eyebrow: string
     titleLead: string
@@ -77,7 +67,6 @@ export const copy: Record<Locale, LandingCopy> = {
     nav: {
       scenes: '真实场景',
       product: '如何工作',
-      story: '开发故事',
       mission: '我们的使命',
     },
     actions: {
@@ -128,15 +117,6 @@ export const copy: Record<Locale, LandingCopy> = {
         },
       ],
     },
-    story: {
-      eyebrow: 'FROM VALIDATION TO PRODUCTION',
-      title: '把现场能说出口的下一句，做成真正可用的产品。',
-      body: '人们缺的往往不是翻译，而是对话现场能说出口的下一句。KiboTalk 会在对话进行时给出可以直接开口的建议。',
-      productionLabel: '现在的产品',
-      productionTitle: 'KiboTalk 自研栈',
-      productionBody: '转写在设备上完成，回复建议使用你配置的模型服务。',
-      capabilities: ['语音活动检测', '声纹验证', '实时转写', '会话历史', 'Web / PWA / 桌面端'],
-    },
     mission: {
       eyebrow: 'READY FOR THE REAL CONVERSATION',
       titleLead: '下一次卡壳前，',
@@ -157,7 +137,6 @@ export const copy: Record<Locale, LandingCopy> = {
     nav: {
       scenes: 'リアルな場面',
       product: '使い方',
-      story: '開発ストーリー',
       mission: '私たちの使命',
     },
     actions: {
@@ -208,15 +187,6 @@ export const copy: Record<Locale, LandingCopy> = {
         },
       ],
     },
-    story: {
-      eyebrow: 'FROM VALIDATION TO PRODUCTION',
-      title: '会話の現場で口にできる次の一言を、長く使えるプロダクトへ。',
-      body: '必要なのは翻訳だけではなく、会話の現場で口にできる「次の一言」。KiboTalkは会話中に、その場で言える返事を提案します。',
-      productionLabel: '現在のプロダクト',
-      productionTitle: 'KiboTalk 自社開発スタック',
-      productionBody: '文字起こしは端末上で行い、返信候補には設定したモデルサービスを使います。',
-      capabilities: ['音声区間検出', '話者照合', 'リアルタイム文字起こし', '会話履歴', 'Web / PWA / デスクトップ'],
-    },
     mission: {
       eyebrow: 'READY FOR THE REAL CONVERSATION',
       titleLead: '次に言葉に詰まる前に、',
@@ -237,7 +207,6 @@ export const copy: Record<Locale, LandingCopy> = {
     nav: {
       scenes: 'Real moments',
       product: 'How it works',
-      story: 'Our build story',
       mission: 'Our mission',
     },
     actions: {
@@ -287,15 +256,6 @@ export const copy: Record<Locale, LandingCopy> = {
           reading: 'Shōshō omachi kudasai.',
         },
       ],
-    },
-    story: {
-      eyebrow: 'FROM VALIDATION TO PRODUCTION',
-      title: 'The next sentence you can actually say, built for real life.',
-      body: 'KiboTalk suggests lines you can say while the conversation is still happening.',
-      productionLabel: 'The product today',
-      productionTitle: 'The KiboTalk stack',
-      productionBody: 'Transcription runs on your device. Reply suggestions use the model service you configure.',
-      capabilities: ['Voice activity detection', 'Speaker verification', 'Live transcription', 'Session history', 'Web / PWA / desktop'],
     },
     mission: {
       eyebrow: 'READY FOR THE REAL CONVERSATION',

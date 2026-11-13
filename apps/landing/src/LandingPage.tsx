@@ -8,10 +8,7 @@ import {
   TranslateIcon,
 } from '@kibotalk/ui/icons'
 import {
-  Badge,
   Button,
-  Card,
-  CardContent,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -21,7 +18,6 @@ import {
   IslandSeparator,
   IslandStatus,
   IslandToggleButton,
-  PillTag,
   StickyNoteCard,
 } from '@kibotalk/ui'
 import { copy, locales, type Locale } from './copy'
@@ -91,9 +87,6 @@ function Header({ locale }: { locale: Locale }) {
           </a>
           <a className="header-link" href="#product">
             {content.nav.product}
-          </a>
-          <a className="header-link" href="#story">
-            {content.nav.story}
           </a>
           <a className="header-link" href="#mission">
             {content.nav.mission}
@@ -235,53 +228,6 @@ function ProductSection({ locale }: { locale: Locale }) {
   )
 }
 
-function StorySection({ locale }: { locale: Locale }) {
-  const { story, actions } = copy[locale]
-
-  return (
-    <section id="story" className="story-section">
-      <div className="page-shell">
-        <div className="story-heading">
-          <p className="section-kicker">{story.eyebrow}</p>
-          <h2 className="section-title">{story.title}</h2>
-          <p className="section-body">{story.body}</p>
-        </div>
-
-        <div className="story-grid">
-          <Card className="story-card production-card">
-            <CardContent>
-              <div className="story-card-topline">
-                <Badge>{story.productionLabel}</Badge>
-              </div>
-              <img
-                className="production-wordmark"
-                src={`${siteBase}assets/kibotalk-wordmark-no-border.svg`}
-                alt="KiboTalk"
-              />
-              <h3>{story.productionTitle}</h3>
-              <p>{story.productionBody}</p>
-              <div className="capability-list">
-                {story.capabilities.map((capability) => (
-                  <PillTag key={capability}>
-                    <CheckIcon aria-hidden />
-                    {capability}
-                  </PillTag>
-                ))}
-              </div>
-              <Button asChild>
-                <a href={webUrl}>
-                  {actions.web}
-                  <ArrowRightUpIcon aria-hidden />
-                </a>
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-    </section>
-  )
-}
-
 function MissionSection({ locale }: { locale: Locale }) {
   const { mission, actions } = copy[locale]
 
@@ -365,7 +311,6 @@ export function LandingPage({ locale }: { locale: Locale }) {
         <Hero locale={locale} />
         <SceneMap locale={locale} />
         <ProductSection locale={locale} />
-        <StorySection locale={locale} />
         <MissionSection locale={locale} />
       </main>
       <Footer locale={locale} />
